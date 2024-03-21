@@ -1,6 +1,8 @@
 import json
 from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
+from typing import Any, Dict, List
 
 import pandas as pd
 import pillow_avif
@@ -20,8 +22,11 @@ class BodyDataset(Dataset):
         self.keypoints_3d_root_path = self.root_path / "keypoints_3d"
         self.segmentation_parts_root_path = self.root_path / "segmentation_parts"
         self.kinematic_tracking_root_path = self.root_path / "kinematic_tracking"
+        # self.registration_vertices_root_path = (
+        #     self.kinematic_tracking_root_path / "registration_vertices"
+        # )
         self.registration_vertices_root_path = (
-            self.kinematic_tracking_root_path / "registration_vertices"
+            self.kinematic_tracking_root_path / "registration_mesh"
         )
         self.pose_root_path = self.kinematic_tracking_root_path / "pose"
         self.uv_image_root_path = self.root_path / "uv_image"
@@ -62,13 +67,13 @@ class BodyDataset(Dataset):
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_image(self, frame: int, camera: int):
         avif_path = self.image_root_path / f"cam{camera:06d}" / f"{frame:06d}.avif"
-        return Image.open(png_path)
+        return Image.open(avif_path)
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_registration_vertices(self, frame: int):
         verts_path = self.registration_vertices_root_path / f"{frame:06d}.ply"
-        with open(verts_path, "r") as f:
-            verticies, _ = load_ply(BytesIO(f.data))
+        with open(verts_path, "rb") as f:
+            verticies, _ = load_ply(f)
         return verticies
 
     @lru_cache(maxsize=CACHE_LENGTH)
@@ -78,8 +83,8 @@ class BodyDataset(Dataset):
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_template_mesh(self):
         mesh_path = self.kinematic_tracking_root_path / "template_mesh.ply"
-        with open(mesh_path, "r") as f:
-            verticies, faces = load_ply(BytesIO(f.data))
+        with open(mesh_path, "rb") as f:
+            verticies, faces = load_ply(f)
         return verticies, faces
 
     @lru_cache(maxsize=CACHE_LENGTH)
@@ -106,9 +111,9 @@ class BodyDataset(Dataset):
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_scan_mesh(self, frame: int):
-        ply_path = self.uv_image_root_path / "scan_mesh" / f"{frame:06d}.ply"
-        with open(ply_path, "r") as f:
-            verticies, faces = load_ply(BytesIO(f.data))
+        ply_path = self.root_path / "scan_mesh" / f"{frame:06d}.ply"
+        with open(ply_path, "rb") as f:
+            verticies, faces = load_ply(f)
         return verticies, faces
 
     def __getitem__(self, frame: int, camera: int):
@@ -141,16 +146,19 @@ class BodyDataset(Dataset):
     def __iter__(self):
         for frame in self.get_frame_list():
             for camera in self.get_camera_list():
-                return self.__getitem__(frame, camera)
+                yield self.__getitem__(frame, camera)
 
 
 if __name__ == "__main__":
+    dataset = BodyDataset(
+        root_path="/home/yitb/goliath_oss/root_dir_unzipped", split="train"
+    )
     dataloader = DataLoader(
-        BodyDataset(root_path="root_dir", split="train"),
+        dataset,
         batch_size=1,
         shuffle=False,
         num_workers=4,
     )
 
-    for row in dataloader:
+    for row in dataset:
         print(row)

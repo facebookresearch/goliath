@@ -2,10 +2,11 @@ name: goliath_oss
 dependencies:
   - anaconda::pandas
   - anaconda::numpy
+  - anaconda::pillow
   - conda-forge::python
   - conda-forge::tqdm
-  - pytorch::torch>=2.0.0
+  - pytorch::pytorch>=2.0.0
   - pytorch::torchvision
   - pytorch3d::pytorch3d
-  pip:
+  - pip:
     - pillow-avif-plugin
