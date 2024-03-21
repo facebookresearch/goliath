@@ -9,6 +9,7 @@ import pillow_avif
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 CACHE_LENGTH = 256
 
@@ -148,6 +149,9 @@ class BodyDataset(Dataset):
             for camera in self.get_camera_list():
                 yield self.__getitem__(frame, camera)
 
+    def __len__(self):
+        return len(self.get_frame_list()) * len(self.get_camera_list())
+
 
 if __name__ == "__main__":
     dataset = BodyDataset(
@@ -160,5 +164,5 @@ if __name__ == "__main__":
         num_workers=4,
     )
 
-    for row in dataset:
-        print(row)
+    for row in tqdm(dataloader):
+        continue
