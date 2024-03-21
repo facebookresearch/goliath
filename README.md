@@ -8,7 +8,7 @@ This is a pre-release with inference only.
 
 ### Dependencies
 
-See `requirements.txt`
+See `requirements.txt`/`environment.yaml`
 
 ### Repository structure
 
