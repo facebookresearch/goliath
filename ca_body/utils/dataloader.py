@@ -3,18 +3,21 @@ from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
+import argparse
 
 import pandas as pd
 import pillow_avif
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, IterableDataset
+from torchvision.transforms.functional import pil_to_tensor
+import numpy as np
 from tqdm import tqdm
 
 CACHE_LENGTH = 256
 
 
-class BodyDataset(Dataset):
+class BodyDataset(IterableDataset):
     def __init__(self, root_path: Path, split: str):
         assert split in ["train", "test"]
         self.root_path = Path(root_path)
@@ -23,11 +26,8 @@ class BodyDataset(Dataset):
         self.keypoints_3d_root_path = self.root_path / "keypoints_3d"
         self.segmentation_parts_root_path = self.root_path / "segmentation_parts"
         self.kinematic_tracking_root_path = self.root_path / "kinematic_tracking"
-        # self.registration_vertices_root_path = (
-        #     self.kinematic_tracking_root_path / "registration_vertices"
-        # )
         self.registration_vertices_root_path = (
-            self.kinematic_tracking_root_path / "registration_mesh"
+            self.kinematic_tracking_root_path / "registration_vertices"
         )
         self.pose_root_path = self.kinematic_tracking_root_path / "pose"
         self.uv_image_root_path = self.root_path / "uv_image"
@@ -74,12 +74,16 @@ class BodyDataset(Dataset):
     def load_registration_vertices(self, frame: int):
         verts_path = self.registration_vertices_root_path / f"{frame:06d}.ply"
         with open(verts_path, "rb") as f:
+            # No faces are included
             verticies, _ = load_ply(f)
         return verticies
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_pose(self, frame: int):
         pose_path = self.pose_root_path / f"{frame:06d}.txt"
+        with open(pose_path, "r") as f:
+            pose_arr = np.array([float(i) for i in f.read().splitlines()])
+        return pose_arr
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_template_mesh(self):
@@ -92,8 +96,8 @@ class BodyDataset(Dataset):
     def load_skeleton_scales(self):
         scales_path = self.kinematic_tracking_root_path / "skeleton_scales.txt"
         with open(scales_path, "r") as f:
-            content = f.read()
-        return content
+            scales_arr = np.array([float(i) for i in f.read().splitlines()])
+        return scales_arr
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_ambient_occlusion(self, frame: int) -> Image:
@@ -117,7 +121,7 @@ class BodyDataset(Dataset):
             verticies, faces = load_ply(f)
         return verticies, faces
 
-    def __getitem__(self, frame: int, camera: int):
+    def get(self, frame: int, camera: int):
         template_mesh = self.load_template_mesh()
         skeleton_scales = self.load_skeleton_scales()
         ambient_occlusion_mean = self.load_ambient_occlusion_mean()
@@ -129,34 +133,38 @@ class BodyDataset(Dataset):
         scan_mesh = self.load_scan_mesh(frame)
         image = self.load_image(frame, camera)
         segmentation_parts = self.load_segmentation_parts(frame, camera)
-        return {
+        row = {
             "camera_id": camera,
             "frame_id": frame,
-            "image": image,
+            "image": pil_to_tensor(image),
             "keypoints_3d": kpts,
             "registration_vertices": registration_vertices,
-            "segmentation_parts": segmentation_parts,
+            "segmentation_parts": pil_to_tensor(segmentation_parts),
             "pose": pose,
             "template_mesh": template_mesh,
             "skeleton_scales": skeleton_scales,
-            "ambient_occlusion_mean": ambient_occlusion_mean,
-            "color_mean": color_mean,
+            "ambient_occlusion_mean": pil_to_tensor(ambient_occlusion_mean),
+            "color_mean": pil_to_tensor(color_mean),
             "scan_mesh": scan_mesh,
         }
+        return row
 
     def __iter__(self):
         for frame in self.get_frame_list():
             for camera in self.get_camera_list():
-                yield self.__getitem__(frame, camera)
+                yield self.get(frame, camera)
 
     def __len__(self):
         return len(self.get_frame_list()) * len(self.get_camera_list())
 
 
 if __name__ == "__main__":
-    dataset = BodyDataset(
-        root_path="/home/yitb/goliath_oss/root_dir_unzipped", split="train"
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", type=Path, help="Root path to capture data")
+    parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
+    args = parser.parse_args()
+
+    dataset = BodyDataset(root_path=args.input, split=args.split)
     dataloader = DataLoader(
         dataset,
         batch_size=1,
