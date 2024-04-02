@@ -1,19 +1,23 @@
-from tqdm import tqdm
-from pathlib import Path
-import zipfile
-from itertools import repeat
+import argparse
 import multiprocessing as mp
 import shutil
-import argparse
+import zipfile
+from itertools import repeat
+from pathlib import Path
+
+from tqdm import tqdm
 
 N_PARALLEL_PROC = 8
 
+
 def unzip_zip(zip_path, output_path):
-    with zipfile.ZipFile(zip_path, 'r') as zipf:
+    with zipfile.ZipFile(zip_path, "r") as zipf:
         zipf.extractall(output_path)
+
 
 def unzip_star(args):
     return unzip_zip(*args)
+
 
 def unzip_images(input_root_path: Path, output_root_path: Path):
     input_images_root = input_root_path / "image"
@@ -25,34 +29,69 @@ def unzip_images(input_root_path: Path, output_root_path: Path):
 
     tasks = zip(cam_zips, repeat(output_images_root))
     with mp.Pool(processes=N_PARALLEL_PROC) as pool:
-        for _ in tqdm(pool.imap_unordered(unzip_star, tasks), desc="Unzipping image zips"):
+        for _ in tqdm(
+            pool.imap_unordered(unzip_star, tasks), desc="Unzipping image zips"
+        ):
             continue
 
+
 def unzip_keypoints_3d(input_root_path: Path, output_root_path: Path):
-    input_zip_path = input_root_path / "keypoints_3d" /"keypoints_3d.zip"
+    input_zip_path = input_root_path / "keypoints_3d" / "keypoints_3d.zip"
     output_path = output_root_path / "keypoints_3d"
     output_path.mkdir(exist_ok=True)
     print(f"Extracting {input_zip_path} into {output_path}")
     unzip_zip(input_zip_path, output_path)
 
+
+def unzip_per_view_background(input_root_path: Path, output_root_path: Path):
+    input_zip_path = input_root_path / "per_view_background" / "per_view_background.zip"
+    output_path = output_root_path / "per_view_background"
+    output_path.mkdir(exist_ok=True)
+    print(f"Extracting {input_zip_path} into {output_path}")
+    unzip_zip(input_zip_path, output_path)
+
+
 def unzip_kinematic_tracking(input_root_path: Path, output_root_path: Path):
     input_path = input_root_path / "kinematic_tracking"
     output_path = output_root_path / "kinematic_tracking"
     output_path.mkdir(exist_ok=True)
-    files = [
-        "skeleton_scales.txt",
-        "template_mesh.ply",
-    ]
-    zips = [
-        "registration_mesh.zip", # TODO: switch to registration_vertices
-        "pose.zip"
-    ]
+
+    files = []
+    zips = []
+    if "Body" in input_root_path.name:
+        files = [
+            "skeleton_scales.txt",
+            "template_mesh.ply",
+        ]
+        zips = [
+            "registration_vertices.zip",
+            "pose.zip",
+        ]
+    if "Head" in input_root_path.name:
+        files = [
+            "registration_vertices_mean.npy",
+            "registration_vertices_variance.txt",
+            "template_mesh.ply",
+        ]
+        zips = [
+            "registration_vertices.zip",
+        ]
+
+    if "Hand" in input_root_path.name:
+        files = [
+            "skeleton_scales.txt",
+            "template_mesh.ply",
+            "template_mesh_unscaled.ply",
+        ]
+        zips = ["pose.zip", "registration_vertices.zip"]
+
     for f in files:
         print(f"Copying file {input_path / f} to {output_path / f}")
         shutil.copy(input_path / f, output_path / f)
     for f in zips:
         print(f"Unzipping {input_path / f} into {output_path}")
         unzip_zip(input_path / f, output_path)
+
 
 def unzip_segmentation_parts(input_root_path: Path, output_root_path: Path):
     input_images_root = input_root_path / "segmentation_parts"
@@ -64,26 +103,47 @@ def unzip_segmentation_parts(input_root_path: Path, output_root_path: Path):
 
     tasks = zip(cam_zips, repeat(output_images_root))
     with mp.Pool(processes=N_PARALLEL_PROC) as pool:
-        for _ in tqdm(pool.imap_unordered(unzip_star, tasks), desc="Unzipping segmentation parts zips"):
+        for _ in tqdm(
+            pool.imap_unordered(unzip_star, tasks),
+            desc="Unzipping segmentation parts zips",
+        ):
             continue
+
 
 def unzip_uv_image(input_root_path: Path, output_root_path: Path):
     input_path = input_root_path / "uv_image"
     output_path = output_root_path / "uv_image"
     output_path.mkdir(exist_ok=True)
-    files = [
-        "ambient_occlusion_mean.png",
-        "color_mean.png",
-    ]
-    zips = [
-        "ambient_occlusion.zip",
-    ]
+    files = []
+    zips = []
+
+    if "Body" in input_root_path.name:
+        files = [
+            "ambient_occlusion_mean.png",
+            "color_mean.png",
+        ]
+        zips = ["ambient_occlusion.zip"]
+
+    if "Head" in input_root_path.name:
+        files = [
+            "color_mean.png",
+            "color_variance.txt",
+        ]
+        zips = ["color.zip"]
+
+    if "Hand" in input_root_path.name:
+        files = [
+            "ambient_occlusion_mean.png",
+        ]
+        zips = ["ambient_occlusion.zip"]
+
     for f in files:
         print(f"Copying file {input_path / f} to {output_path / f}")
         shutil.copy(input_path / f, output_path / f)
     for f in zips:
         print(f"Unzipping {input_path / f} into {output_path}")
         unzip_zip(input_path / f, output_path)
+
 
 def unzip_scan_mesh(input_root_path: Path, output_root_path: Path):
     input_path = input_root_path / "scan_mesh" / "scan_mesh.zip"
@@ -92,11 +152,12 @@ def unzip_scan_mesh(input_root_path: Path, output_root_path: Path):
     output_path.mkdir(exist_ok=True)
     unzip_zip(input_path, output_path)
 
+
 def copy_misc(input_root_path: Path, output_root_path: Path):
     files = [
         "camera_calibration.json",
-        # "floor_transformation.txt",
         "frame_splits_list.csv",
+        "frame_segments_list.csv",
     ]
     for f in files:
         print(f"Copying file {input_root_path / f} to {output_root_path / f}")
@@ -125,6 +186,10 @@ def main():
     unzip_kinematic_tracking(input_root_path, output_root_path)
     unzip_keypoints_3d(input_root_path, output_root_path)
     unzip_images(input_root_path, output_root_path)
+
+    if "Head" in input_root_path.name:
+        unzip_per_view_background(input_root_path, output_root_path)
+
 
 if __name__ == "__main__":
     main()
