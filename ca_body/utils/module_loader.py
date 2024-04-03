@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import copy
@@ -12,13 +12,15 @@ from typing import Any, Dict, Optional
 
 from attrdict import AttrDict
 
-from torch import nn
+import torch.nn as nn
 
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def load_module(module_name: str, class_name: Optional[str] = None, silent: bool = False):
+def load_module(
+    module_name: str, class_name: Optional[str] = None, silent: bool = False
+):
     """
     Load a module or class given the module/class name.
 
@@ -55,7 +57,9 @@ def load_module(module_name: str, class_name: Optional[str] = None, silent: bool
     except AttributeError as e:
         if silent:
             return None
-        logger.error(f"Can not locate class: {class_name} in {module_name}.", exc_info=True)
+        logger.error(
+            f"Can not locate class: {class_name} in {module_name}.", exc_info=True
+        )
         raise
 
 
@@ -168,9 +172,6 @@ def load_object(spec: ObjectSpec, **kwargs: Any):
     return object_class(**{**spec.kwargs, **kwargs})
 
 
-# From DaaT merge. Fix here T145981161
-# pyre-fixme[2]: parameter must be annotated.
-# pyre-fixme[3]: Return type must be annotated.
 def load_from_config(config: AttrDict, **kwargs):
     """Instantiate an object given a config and arguments."""
     assert "class_name" in config and "module_name" not in config
@@ -180,9 +181,6 @@ def load_from_config(config: AttrDict, **kwargs):
     return object_class(**config, **kwargs)
 
 
-# From DaaT merge. Fix here T145981161
-# pyre-fixme[2]: parameter must be annotated.
-# pyre-fixme[3]: Return type must be annotated.
 def forward_parameter_names(module):
     """Get the names arguments of the forward pass for the module.
 
@@ -198,7 +196,6 @@ def forward_parameter_names(module):
     return names
 
 
-# From DaaT merge. Fix here T145981161
 def build_optimizer(config, model):
     """Build an optimizer given optimizer config and a model.
 
@@ -256,7 +253,6 @@ def build_optimizer(config, model):
     return load_from_config(config, params=params)
 
 
-# From DaaT merge. Fix here T145981161
 class ForwardFilter:
     """A module that filters out arguments for the `forward()`."""
 

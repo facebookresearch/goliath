@@ -1,12 +1,11 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import numpy as np
 import re
 
-import torch
 import torch as th
 import torch.nn as nn
 
@@ -26,8 +25,8 @@ class ParameterTransform(nn.Module):
         super().__init__()
         # self.pose_names = list(lbs_cfg_dict["joint_names"])
         self.channel_names = list(lbs_cfg_dict["channel_names"])
-        transform_offsets = torch.FloatTensor(lbs_cfg_dict["transform_offsets"])
-        transform = torch.FloatTensor(lbs_cfg_dict["transform"])
+        transform_offsets = th.FloatTensor(lbs_cfg_dict["transform_offsets"])
+        transform = th.FloatTensor(lbs_cfg_dict["transform"])
         self.limits = lbs_cfg_dict["limits"]
 
         self.nr_scaling_params = lbs_cfg_dict["nr_scaling_params"]
@@ -52,8 +51,8 @@ class LinearBlendSkinning(nn.Module):
         self,
         model_json: Dict[str, Any],
         lbs_config_dict: Dict[str, Any],
-        num_max_skin_joints: int =8,
-        scale_path: str =None,
+        num_max_skin_joints: int = 8,
+        scale_path: str = None,
     ):
         super().__init__()
 
@@ -63,29 +62,29 @@ class LinearBlendSkinning(nn.Module):
         self.joint_names = []
 
         nr_joints = len(model["Skeleton"]["Bones"])
-        joint_parents = torch.zeros((nr_joints, 1), dtype=torch.int64)
-        joint_rotation = torch.zeros((nr_joints, 4), dtype=torch.float32)
-        joint_offset = torch.zeros((nr_joints, 3), dtype=torch.float32)
+        joint_parents = th.zeros((nr_joints, 1), dtype=th.int64)
+        joint_rotation = th.zeros((nr_joints, 4), dtype=th.float32)
+        joint_offset = th.zeros((nr_joints, 3), dtype=th.float32)
         for idx, bone in enumerate(model["Skeleton"]["Bones"]):
             self.joint_names.append(bone["Name"])
             if bone["Parent"] > nr_joints:
                 joint_parents[idx] = -1
             else:
                 joint_parents[idx] = bone["Parent"]
-            joint_rotation[idx, :] = torch.FloatTensor(bone["PreRotation"])
-            joint_offset[idx, :] = torch.FloatTensor(bone["TranslationOffset"])
+            joint_rotation[idx, :] = th.FloatTensor(bone["PreRotation"])
+            joint_offset[idx, :] = th.FloatTensor(bone["TranslationOffset"])
 
         skin_model = model["SkinnedModel"]
-        mesh_vertices = torch.FloatTensor(skin_model["RestPositions"])
-        mesh_normals = torch.FloatTensor(skin_model["RestVertexNormals"])
+        mesh_vertices = th.FloatTensor(skin_model["RestPositions"])
+        mesh_normals = th.FloatTensor(skin_model["RestVertexNormals"])
 
-        weights = torch.FloatTensor([e[1] for e in skin_model["SkinningWeights"]])
-        indices = torch.LongTensor([e[0] for e in skin_model["SkinningWeights"]])
-        offsets = torch.LongTensor(skin_model["SkinningOffsets"])
+        weights = th.FloatTensor([e[1] for e in skin_model["SkinningWeights"]])
+        indices = th.LongTensor([e[0] for e in skin_model["SkinningWeights"]])
+        offsets = th.LongTensor(skin_model["SkinningOffsets"])
 
         nr_vertices = len(offsets) - 1
-        skin_weights = torch.zeros((nr_vertices, num_max_skin_joints), dtype=torch.float32)
-        skin_indices = torch.zeros((nr_vertices, num_max_skin_joints), dtype=torch.int64)
+        skin_weights = th.zeros((nr_vertices, num_max_skin_joints), dtype=th.float32)
+        skin_indices = th.zeros((nr_vertices, num_max_skin_joints), dtype=th.int64)
 
         offset_right = offsets[1:]
         for offset in range(num_max_skin_joints):
@@ -97,12 +96,18 @@ class LinearBlendSkinning(nn.Module):
                 offset_left[offset_left < offset_right]
             ]
 
-        mesh_faces = torch.IntTensor(skin_model["Faces"]["Indices"]).view(-1, 3)
-        mesh_texture_faces = torch.IntTensor(skin_model["Faces"]["TextureIndices"]).view(-1, 3)
-        mesh_texture_coords = torch.FloatTensor(skin_model["TextureCoordinates"]).view(-1, 2)
+        mesh_faces = th.IntTensor(skin_model["Faces"]["Indices"]).view(-1, 3)
+        mesh_texture_faces = th.IntTensor(skin_model["Faces"]["TextureIndices"]).view(
+            -1, 3
+        )
+        mesh_texture_coords = th.FloatTensor(skin_model["TextureCoordinates"]).view(
+            -1, 2
+        )
 
         # zero_pose = torch.zeros((1, len(self.param_transform.pose_names)), dtype=torch.float32)
-        zero_pose = torch.zeros((1, self.param_transform.nr_total_params), dtype=torch.float32)
+        zero_pose = th.zeros(
+            (1, self.param_transform.nr_total_params), dtype=th.float32
+        )
         bind_state = solve_skeleton_state(
             self.param_transform(zero_pose), joint_offset, joint_rotation, joint_parents
         )
@@ -129,7 +134,7 @@ class LinearBlendSkinning(nn.Module):
         if scale_path is not None:
             scale = np.loadtxt(scale_path).astype(np.float32)[np.newaxis]
             scale = scale[:, 0, :] if len(scale.shape) == 3 else scale
-            self.register_buffer("scale", torch.tensor(scale))
+            self.register_buffer("scale", th.tensor(scale))
 
     @property
     def num_verts(self):
@@ -143,16 +148,20 @@ class LinearBlendSkinning(nn.Module):
     def num_params(self):
         return self.skin_weights.shape[-1]
 
-    def compute_rigid_transforms(self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor):
+    def compute_rigid_transforms(
+        self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor
+    ):
         """Returns rigid transforms."""
-        params = torch.cat([global_pose, local_pose, scale], axis=-1)
+        params = th.cat([global_pose, local_pose, scale], axis=-1)
         params = self.param_transform(params)
         return solve_skeleton_state(
             params, self.joint_offset, self.joint_rotation, self.joint_parents
         )
 
-    def compute_rigid_transforms_matrix(self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor):
-        params = torch.cat([global_pose, local_pose, scale], axis=-1)
+    def compute_rigid_transforms_matrix(
+        self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor
+    ):
+        params = th.cat([global_pose, local_pose, scale], axis=-1)
         params = self.param_transform(params)
         states = solve_skeleton_state(
             params, self.joint_offset, self.joint_rotation, self.joint_parents
@@ -161,10 +170,12 @@ class LinearBlendSkinning(nn.Module):
 
     def compute_joints_weights(self, drop_empty=False):
         """Compute weights per joint given flattened weights-indices."""
-        idxs_verts = torch.arange(self.num_verts)[:, np.newaxis].expand(-1, self.num_params)
-        weights_joints = torch.zeros(
+        idxs_verts = th.arange(self.num_verts)[:, np.newaxis].expand(
+            -1, self.num_params
+        )
+        weights_joints = th.zeros(
             (self.num_joints, self.num_verts),
-            dtype=torch.float32,
+            dtype=th.float32,
             device=self.skin_weights.device,
         )
         weights_joints[self.skin_indices, idxs_verts] = self.skin_weights
@@ -174,14 +185,16 @@ class LinearBlendSkinning(nn.Module):
 
         return weights_joints
 
-    def compute_root_rigid_transform(self, poses: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+    def compute_root_rigid_transform(
+        self, poses: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor]:
         """Get a transform of the root joint."""
-        scales = torch.zeros(
+        scales = th.zeros(
             (poses.shape[0], self.nr_total_params - poses.shape[1]),
             dtype=poses.dtype,
             device=poses.device,
         )
-        params = torch.cat((poses, scales), 1)
+        params = th.cat((poses, scales), 1)
         states = solve_skeleton_state(
             self.param_transform(params),
             self.joint_offset,
@@ -191,8 +204,10 @@ class LinearBlendSkinning(nn.Module):
         mat = states_to_matrix(self.bind_state, states)
         return mat[:, 1, :, 3], mat[:, 1, :, :3]
 
-    def compute_relative_rigid_transforms(self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor):
-        params = torch.cat([global_pose, local_pose, scale], axis=-1)
+    def compute_relative_rigid_transforms(
+        self, global_pose: th.Tensor, local_pose: th.Tensor, scale: th.Tensor
+    ):
+        params = th.cat([global_pose, local_pose, scale], axis=-1)
         params = self.param_transform(params)
 
         batch_size = params.shape[0]
@@ -203,10 +218,14 @@ class LinearBlendSkinning(nn.Module):
         # batch processing for parameters
         jp = params.view((batch_size, -1, 7))
         lt = jp[:, :, 0:3] + joint_offset.unsqueeze(0)
-        lr = Quaternion.batchMul(joint_rotation.unsqueeze(0), Quaternion.batchFromXYZ(jp[:, :, 3:6]))
-        return torch.cat([lt, lr], axis=-1)
+        lr = Quaternion.batchMul(
+            joint_rotation.unsqueeze(0), Quaternion.batchFromXYZ(jp[:, :, 3:6])
+        )
+        return th.cat([lt, lr], axis=-1)
 
-    def skinning(self, bind_state: th.Tensor, vertices: th.Tensor, target_states: th.Tensor):
+    def skinning(
+        self, bind_state: th.Tensor, vertices: th.Tensor, target_states: th.Tensor
+    ):
         """
         Apply skinning to a set of states
 
@@ -223,9 +242,9 @@ class LinearBlendSkinning(nn.Module):
         mat = states_to_matrix(bind_state, target_states)
 
         # apply skinning to vertices
-        vs = torch.matmul(
+        vs = th.matmul(
             mat[:, self.skin_indices],
-            torch.cat((vertices, torch.ones_like(vertices[:, :, 0]).unsqueeze(2)), dim=2)
+            th.cat((vertices, th.ones_like(vertices[:, :, 0]).unsqueeze(2)), dim=2)
             .unsqueeze(2)
             .unsqueeze(4),
         )
@@ -241,7 +260,7 @@ class LinearBlendSkinning(nn.Module):
         :return:
         """
         # check shape of poses and scales
-        params = torch.cat((poses, scales), 1)
+        params = th.cat((poses, scales), 1)
         states = solve_skeleton_state(
             self.param_transform(params),
             self.joint_offset,
@@ -251,7 +270,9 @@ class LinearBlendSkinning(nn.Module):
 
         return self.unskinning(self.bind_state, states, verts)
 
-    def unskinning(self, bind_state: th.Tensor, target_states: th.Tensor, verts: th.Tensor):
+    def unskinning(
+        self, bind_state: th.Tensor, target_states: th.Tensor, verts: th.Tensor
+    ):
         """Apply skinning to a set of states
 
         Args:
@@ -269,10 +290,10 @@ class LinearBlendSkinning(nn.Module):
         ws = self.skin_weights[None, :, :, None, None]
         sum_mat = (mat[:, self.skin_indices] * ws).sum(dim=2)
 
-        sum_mat4x4 = torch.cat((sum_mat, torch.zeros_like(sum_mat[:, :, :1, :])), dim=2)
+        sum_mat4x4 = th.cat((sum_mat, th.zeros_like(sum_mat[:, :, :1, :])), dim=2)
         sum_mat4x4[:, :, 3, 3] = 1.0
 
-        verts_4d = torch.cat((verts, torch.ones_like(verts[:, :, :1])), dim=2).unsqueeze(3)
+        verts_4d = th.cat((verts, th.ones_like(verts[:, :, :1])), dim=2).unsqueeze(3)
 
         resmesh = []
         for i in range(sum_mat.shape[0]):
@@ -280,21 +301,26 @@ class LinearBlendSkinning(nn.Module):
             invnewmat = newmat.inverse()
             tmpvets = invnewmat.matmul(verts_4d[i])
             resmesh.append(tmpvets.unsqueeze(0))
-        resmesh = torch.cat(resmesh)
+        resmesh = th.cat(resmesh)
 
         return resmesh.squeeze(3)[..., :3].contiguous()
 
-    def forward(self, poses: th.Tensor, scales: th.Tensor, verts_unposed: Optional[th.Tensor] = None) -> th.Tensor:
+    def forward(
+        self,
+        poses: th.Tensor,
+        scales: th.Tensor,
+        verts_unposed: Optional[th.Tensor] = None,
+    ) -> th.Tensor:
         """
         Args:
             poses: [B, NP] - pose parametersa
             scales: [B, NS] - additional scaling params
             verts_unposed: [B, N, 3] - unposed vertices
-                
+
         Returns:
             [B, N, 3] - posed vertices
         """
-        params = torch.cat((poses, scales), 1)
+        params = th.cat((poses, scales), 1)
         params_transformed = self.param_transform(params)
         states = solve_skeleton_state(
             params_transformed,
@@ -303,13 +329,20 @@ class LinearBlendSkinning(nn.Module):
             self.joint_parents,
         )
         if verts_unposed is None:
-            mesh = self.skinning(self.bind_state, self.mesh_vertices.unsqueeze(0), states)
+            mesh = self.skinning(
+                self.bind_state, self.mesh_vertices.unsqueeze(0), states
+            )
         else:
             mesh = self.skinning(self.bind_state, verts_unposed, states)
         return mesh
 
 
-def solve_skeleton_state(param: th.Tensor, joint_offset: th.Tensor, joint_rotation: th.Tensor, joint_parents: th.Tensor):
+def solve_skeleton_state(
+    param: th.Tensor,
+    joint_offset: th.Tensor,
+    joint_rotation: th.Tensor,
+    joint_parents: th.Tensor,
+):
     """
     :param param: batch_size x (7*nr_skeleton_joints) ParamTransform Outputs.
     :return: batch_size x nr_skeleton_joints x 8 Skeleton States
@@ -319,16 +352,20 @@ def solve_skeleton_state(param: th.Tensor, joint_offset: th.Tensor, joint_rotati
     # batch processing for parameters
     jp = param.view((batch_size, -1, 7))
     lt = jp[:, :, 0:3] + joint_offset.unsqueeze(0)
-    lr = Quaternion.batchMul(joint_rotation.unsqueeze(0), Quaternion.batchFromXYZ(jp[:, :, 3:6]))
-    ls = torch.pow(
-        torch.tensor([2.0], dtype=torch.float32, device=param.device),
+    lr = Quaternion.batchMul(
+        joint_rotation.unsqueeze(0), Quaternion.batchFromXYZ(jp[:, :, 3:6])
+    )
+    ls = th.pow(
+        th.tensor([2.0], dtype=th.float32, device=param.device),
         jp[:, :, 6].unsqueeze(2),
     )
 
     state = []
     for index, parent in enumerate(joint_parents):
         if int(parent) != -1:
-            gr = Quaternion.batchMul(state[parent][:, :, 3:7], lr[:, index, :].unsqueeze(1))
+            gr = Quaternion.batchMul(
+                state[parent][:, :, 3:7], lr[:, index, :].unsqueeze(1)
+            )
             gt = (
                 Quaternion.batchRot(
                     state[parent][:, :, 3:7],
@@ -337,18 +374,20 @@ def solve_skeleton_state(param: th.Tensor, joint_offset: th.Tensor, joint_rotati
                 + state[parent][:, :, 0:3]
             )
             gs = state[parent][:, :, 7].unsqueeze(2) * ls[:, index, :].unsqueeze(1)
-            state.append(torch.cat((gt, gr, gs), dim=2))
+            state.append(th.cat((gt, gr, gs), dim=2))
         else:
             state.append(
-                torch.cat((lt[:, index, :], lr[:, index, :], ls[:, index, :]), dim=1).view(
+                th.cat((lt[:, index, :], lr[:, index, :], ls[:, index, :]), dim=1).view(
                     (batch_size, 1, 8)
                 )
             )
 
-    return torch.cat(state, dim=1)
+    return th.cat(state, dim=1)
 
 
-def states_to_matrix(bind_state: th.Tensor, target_states: th.Tensor, return_transform: bool=False):
+def states_to_matrix(
+    bind_state: th.Tensor, target_states: th.Tensor, return_transform: bool = False
+):
     # multiply bind inverse with states
     br = Quaternion.batchInvert(bind_state[:, :, 3:7])
     bs = bind_state[:, :, 7].unsqueeze(2).reciprocal()
@@ -360,7 +399,9 @@ def states_to_matrix(bind_state: th.Tensor, target_states: th.Tensor, return_tra
     ts = target_states[:, :, 7].unsqueeze(2) * bs
     # applying transformation
     tt = (
-        Quaternion.batchRot(target_states[:, :, 3:7], bt * target_states[:, :, 7].unsqueeze(2))
+        Quaternion.batchRot(
+            target_states[:, :, 3:7], bt * target_states[:, :, 7].unsqueeze(2)
+        )
         + target_states[:, :, 0:3]
     )
 
@@ -374,11 +415,11 @@ def states_to_matrix(bind_state: th.Tensor, target_states: th.Tensor, return_tra
     tyy = 2.0 * tr[:, :, 1] * tr[:, :, 1]
     tyz = 2.0 * tr[:, :, 2] * tr[:, :, 1]
     tzz = 2.0 * tr[:, :, 2] * tr[:, :, 2]
-    mat = torch.stack(
+    mat = th.stack(
         (
-            torch.stack((1.0 - (tyy + tzz), txy + twz, txz - twy), dim=2) * ts,
-            torch.stack((txy - twz, 1.0 - (txx + tzz), tyz + twx), dim=2) * ts,
-            torch.stack((txz + twy, tyz - twx, 1.0 - (txx + tyy)), dim=2) * ts,
+            th.stack((1.0 - (tyy + tzz), txy + twz, txz - twy), dim=2) * ts,
+            th.stack((txy - twz, 1.0 - (txx + tzz), tyz + twx), dim=2) * ts,
+            th.stack((txz + twy, tyz - twx, 1.0 - (txx + tyy)), dim=2) * ts,
             tt,
         ),
         dim=3,
@@ -459,7 +500,9 @@ def load_momentum_cfg(model, lbs_config_txt_fh, nr_scaling_params=None):
                 )
 
                 if len(rp.groups()) != 3:
-                    logger.info(f"Failed to parse passive limit configuration line :\n {line}")
+                    logger.info(
+                        f"Failed to parse passive limit configuration line :\n {line}"
+                    )
                     continue
 
                 minVal = float(rp.groups()[0])
@@ -482,7 +525,9 @@ def load_momentum_cfg(model, lbs_config_txt_fh, nr_scaling_params=None):
                     limits.append(limit)
                 else:
                     if parameterIndex is None:
-                        logger.info(f"Unknown parameterIndex : {fullname}\n  {line} {paramNames} ")
+                        logger.info(
+                            f"Unknown parameterIndex : {fullname}\n  {line} {paramNames} "
+                        )
                         continue
                     limit = {
                         "type": "LimitMinMaxParameter",
@@ -559,7 +604,9 @@ def load_momentum_cfg(model, lbs_config_txt_fh, nr_scaling_params=None):
             transform_triplets.append((valueIndex, parameterIndex, val))
 
     # set (dense) parameter_transformation matrix
-    transform = np.zeros((len(channelNames) * len(joint_names), len(paramNames)), dtype=np.float32)
+    transform = np.zeros(
+        (len(channelNames) * len(joint_names), len(paramNames)), dtype=np.float32
+    )
     for i, j, v in transform_triplets:
         transform[i, j] = v
 
@@ -569,12 +616,18 @@ def load_momentum_cfg(model, lbs_config_txt_fh, nr_scaling_params=None):
         "channel_names": channelNames,
         "limits": limits,
         "transform": transform,
-        "transform_offsets": np.zeros((1, len(channelNames) * len(joint_names)), dtype=np.float32),
+        "transform_offsets": np.zeros(
+            (1, len(channelNames) * len(joint_names)), dtype=np.float32
+        ),
     }
     # set number of scales automatically
     if nr_scaling_params is None:
-        outputs.update(nr_scaling_params=len([s for s in paramNames if s.startswith("scale")]))
-        outputs.update(nr_position_params=len(paramNames) - outputs["nr_scaling_params"])
+        outputs.update(
+            nr_scaling_params=len([s for s in paramNames if s.startswith("scale")])
+        )
+        outputs.update(
+            nr_position_params=len(paramNames) - outputs["nr_scaling_params"]
+        )
 
     return outputs
 
@@ -592,7 +645,9 @@ def compute_normalized_pose_quat(lbs, local_pose, scale):
     params = params.reshape(B, -1, 7)
     # applying rotation
     # TODO: what is this?
-    rot_quat = Quaternion.batchMul(lbs.joint_rotation[np.newaxis], Quaternion.batchFromXYZ(params[:, :, 3:6]))
+    rot_quat = Quaternion.batchMul(
+        lbs.joint_rotation[np.newaxis], Quaternion.batchFromXYZ(params[:, :, 3:6])
+    )
     # removing the bind state
     bind_rot_quat = Quaternion.batchInvert(lbs.bind_state[:, :, 3:7])
     return Quaternion.batchMul(rot_quat, bind_rot_quat)
@@ -611,7 +666,8 @@ def compute_root_transform_cuda(lbs_fn, poses, verts=None):
 
     R_root = th.matmul(state_r[:, 1], bind_r)
     t_root = (
-        th.matmul(state_r[:, 1], (bind_t * state_s[:, 1])[..., np.newaxis])[..., 0] + state_t[:, 1]
+        th.matmul(state_r[:, 1], (bind_t * state_s[:, 1])[..., np.newaxis])[..., 0]
+        + state_t[:, 1]
     )
 
     return R_root, t_root
@@ -641,16 +697,21 @@ def joint_connectivity(nr_joints, joint_parents, chain_depth=2, pad_ancestors=Fa
         parents[j] = parent_index
 
     return {
-        'children': children,
-        'parents': parents,
-        'ancestors': ancestors,
+        "children": children,
+        "parents": parents,
+        "ancestors": ancestors,
     }
 
 
 # TODO: merge this with LinearBlendSkinning
 class LBSModule(nn.Module):
     def __init__(
-        self, lbs_model_json, lbs_config_dict, lbs_template_verts, lbs_scale, global_scaling
+        self,
+        lbs_model_json,
+        lbs_config_dict,
+        lbs_template_verts,
+        lbs_scale,
+        global_scaling,
     ):
         super().__init__()
         self.lbs_fn = LinearBlendSkinning(lbs_model_json, lbs_config_dict)
@@ -665,13 +726,16 @@ class LBSModule(nn.Module):
         scale = self.lbs_scale.expand(motion.shape[0], -1)
         if template is None:
             template = self.lbs_template_verts
-        return self.lbs_fn(motion, scale, verts_unposed + template) * self.global_scaling
+        return (
+            self.lbs_fn(motion, scale, verts_unposed + template) * self.global_scaling
+        )
 
     def unpose(self, verts, motion):
         B = motion.shape[0]
         scale = self.lbs_scale.expand(B, -1)
         return (
-            self.lbs_fn.unpose(motion, scale, verts / self.global_scaling) - self.lbs_template_verts
+            self.lbs_fn.unpose(motion, scale, verts / self.global_scaling)
+            - self.lbs_template_verts
         )
 
     def template_pose(self, motion):
@@ -679,5 +743,3 @@ class LBSModule(nn.Module):
         scale = self.lbs_scale.expand(B, -1)
         verts = self.lbs_template_verts[np.newaxis].expand(B, -1, -1)
         return self.lbs_fn(motion, scale, verts) * self.global_scaling[np.newaxis]
-
-

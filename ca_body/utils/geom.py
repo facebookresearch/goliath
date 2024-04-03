@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -554,6 +554,7 @@ def project_points_multi(p, Rt, K, normalize=False, size=None):
         )
     return p_pix, p_depth
 
+
 def xyz2normals(xyz: th.Tensor, eps: float = 1e-8) -> th.Tensor:
     """Convert XYZ image to normal image
 
@@ -598,10 +599,12 @@ def depth2xyz(depth, focal, princpt) -> th.Tensor:
 
     b, h, w = depth.shape[0], depth.shape[2], depth.shape[3]
     ix = (
-        th.arange(w, device=depth.device).float()[None, None, :] - princpt[:, None, None, 0]
+        th.arange(w, device=depth.device).float()[None, None, :]
+        - princpt[:, None, None, 0]
     ) / focal[:, None, None, 0, 0]
     iy = (
-        th.arange(h, device=depth.device).float()[None, :, None] - princpt[:, None, None, 1]
+        th.arange(h, device=depth.device).float()[None, :, None]
+        - princpt[:, None, None, 1]
     ) / focal[:, None, None, 1, 1]
     xyz = th.zeros((b, 3, h, w), device=depth.device)
     xyz[:, 0, ...] = depth[:, 0, :, :] * ix
@@ -647,11 +650,14 @@ def depth_discontuity_mask(
             device=device,
         )
 
-        disc_mask = (th.norm(F.conv2d(depth, kernel, bias=None, padding=1), dim=1) > threshold)[
-            :, np.newaxis
-        ]
         disc_mask = (
-            F.avg_pool2d(disc_mask.float(), pool_ksize, stride=1, padding=pool_ksize // 2) > 0.0
+            th.norm(F.conv2d(depth, kernel, bias=None, padding=1), dim=1) > threshold
+        )[:, np.newaxis]
+        disc_mask = (
+            F.avg_pool2d(
+                disc_mask.float(), pool_ksize, stride=1, padding=pool_ksize // 2
+            )
+            > 0.0
         )
 
     return disc_mask

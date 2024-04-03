@@ -4,7 +4,7 @@ Codec Avatar Body
 
 ### Disclaimer
 
-This is a pre-release with inference only.
+This is a pre-release.
 
 ### Dependencies
 
@@ -19,6 +19,30 @@ See `requirements.txt`/`environment.yaml`
 
 - `notebooks/` - example notebooks
 - `data/` - location of sample data and checkpoints
+
+
+### Downloading data
+
+TODO: 
+
+```
+python unpack_dataset
+```
+
+### Training
+
+```
+torchrun train.py <config.yml>
+```
+
+### Evaluation
+
+TODO: 
+
+```
+python eval.py <config.yml>
+```
+
 
 
 ### License

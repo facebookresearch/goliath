@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import numpy as np
@@ -27,10 +27,18 @@ class Quaternion:
         """
         return th.stack(
             [
-                (q * th.tensor([1.0, 1.0, -1.0, 1.0], dtype=q.dtype)).dot(r[[3, 2, 1, 0]]),
-                (q * th.tensor([-1.0, 1.0, 1.0, 1.0], dtype=q.dtype)).dot(r[[2, 3, 0, 1]]),
-                (q * th.tensor([1.0, -1.0, 1.0, 1.0], dtype=q.dtype)).dot(r[[1, 0, 3, 2]]),
-                (q * th.tensor([-1.0, -1.0, -1.0, 1.0], dtype=q.dtype)).dot(r[[0, 1, 2, 3]]),
+                (q * th.tensor([1.0, 1.0, -1.0, 1.0], dtype=q.dtype)).dot(
+                    r[[3, 2, 1, 0]]
+                ),
+                (q * th.tensor([-1.0, 1.0, 1.0, 1.0], dtype=q.dtype)).dot(
+                    r[[2, 3, 0, 1]]
+                ),
+                (q * th.tensor([1.0, -1.0, 1.0, 1.0], dtype=q.dtype)).dot(
+                    r[[1, 0, 3, 2]]
+                ),
+                (q * th.tensor([-1.0, -1.0, -1.0, 1.0], dtype=q.dtype)).dot(
+                    r[[0, 1, 2, 3]]
+                ),
             ]
         )
 
@@ -69,10 +77,12 @@ class Quaternion:
         them.
         """
         rc = th.cos(
-            angles * th.tensor([-0.5, 0.5, 0.5], dtype=angles.dtype, device=angles.device)
+            angles
+            * th.tensor([-0.5, 0.5, 0.5], dtype=angles.dtype, device=angles.device)
         )
         rs = th.sin(
-            angles * th.tensor([-0.5, 0.5, 0.5], dtype=angles.dtype, device=angles.device)
+            angles
+            * th.tensor([-0.5, 0.5, 0.5], dtype=angles.dtype, device=angles.device)
         )
 
         return th.stack(
@@ -164,7 +174,6 @@ class Quaternion:
             dim=2,
         )
 
-
     @staticmethod
     def batchMul(q, r):
         """
@@ -255,7 +264,6 @@ class Quaternion:
         aav = th.cross(q[:, :, :3], av, dim=2)
         return th.add(v, 2 * th.add(th.mul(av, q[:, :, 3].unsqueeze(2)), aav))
 
-    
     @staticmethod
     def batchInvert(q):
         """
@@ -487,9 +495,13 @@ class NormalComputer(nn.Module):
         )
         patchmatch_uvpos = patchmatch_uvpos + vec_standuv
         localpatchcoord = np.zeros((patchttnum, 2), dtype=np.int32)
-        localpatchcoord = np.array([[-1, 0], [0, 1], [1, 0], [0, -1], [0, 0]]).astype(np.int32)
+        localpatchcoord = np.array([[-1, 0], [0, 1], [1, 0], [0, -1], [0, 0]]).astype(
+            np.int32
+        )
 
-        patchmatch_uvpos = patchmatch_uvpos + localpatchcoord.reshape(1, 1, patchttnum, 2)
+        patchmatch_uvpos = patchmatch_uvpos + localpatchcoord.reshape(
+            1, 1, patchttnum, 2
+        )
         patchmatch_uvpos[..., 0] = np.clip(patchmatch_uvpos[..., 0], 0, height - 1)
         patchmatch_uvpos[..., 1] = np.clip(patchmatch_uvpos[..., 1], 0, width - 1)
 
@@ -500,14 +512,17 @@ class NormalComputer(nn.Module):
         mesh_mask_int = maskin.reshape(height, width).astype(
             np.int32
         )  # using all pixel valid mask; can use a tailored mask
-        patchmatch_mask = mesh_mask_int[patchmatch_uvpos[..., 0], patchmatch_uvpos[..., 1]].reshape(
-            height, width, patchttnum, 1
+        patchmatch_mask = mesh_mask_int[
+            patchmatch_uvpos[..., 0], patchmatch_uvpos[..., 1]
+        ].reshape(height, width, patchttnum, 1)
+        patch_indicemap = (
+            patchmatch_uvpos * patchmatch_mask + (1 - patchmatch_mask) * vec_standuv
         )
-        patch_indicemap = patchmatch_uvpos * patchmatch_mask + (1 - patchmatch_mask) * vec_standuv
 
         tensor_patch_geoindicemap = th.from_numpy(patch_indicemap).long()
         tensor_patch_geoindicemap1d = (
-            tensor_patch_geoindicemap[..., 0] * width + tensor_patch_geoindicemap[..., 1]
+            tensor_patch_geoindicemap[..., 0] * width
+            + tensor_patch_geoindicemap[..., 1]
         )
 
         self.register_buffer("tensor_patch_geoindicemap1d", tensor_patch_geoindicemap1d)
@@ -545,7 +560,9 @@ class NormalComputer(nn.Module):
         return normal.permute(0, 3, 1, 2)
 
 
-def pointcloud_rigid_registration(src_pointcloud, dst_pointcloud, reduce_loss: bool = True):
+def pointcloud_rigid_registration(
+    src_pointcloud, dst_pointcloud, reduce_loss: bool = True
+):
     """
     Calculate RT and residual L2 loss for two pointclouds
     :param src_pointcloud: x (b, v, 3)

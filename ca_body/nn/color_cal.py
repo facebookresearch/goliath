@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import logging
@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 import torch as th
-from ca_body.utils.torch import ParamHolder
+from ca_body.utils.torchutils import ParamHolder
 
 from typing import List
 
@@ -28,8 +28,7 @@ def scale_hook(grad: Optional[th.Tensor], scale: float) -> Optional[th.Tensor]:
 
 
 class CalBase(th.nn.Module):
-    def name_to_idx(self, cam_names: Sequence[str]) -> th.Tensor:
-        ...
+    def name_to_idx(self, cam_names: Sequence[str]) -> th.Tensor: ...
 
 
 class Identity(th.nn.Module):
@@ -49,7 +48,9 @@ class Identity(th.nn.Module):
         self.identity_camera = identity_camera
         self.cameras = cameras
         self.holder = ParamHolder(
-            (3 + 3,), cameras, init_value=th.tensor([1, 1, 1, 0, 0, 0], dtype=th.float32)
+            (3 + 3,),
+            cameras,
+            init_value=th.tensor([1, 1, 1, 0, 0, 0], dtype=th.float32),
         )
 
     def name_to_idx(self, cam_names: Sequence[str]) -> th.Tensor:
@@ -89,10 +90,14 @@ class CalV3(CalBase):
 
     def name_to_idx(self, cam_names: Sequence[str]) -> th.Tensor:
         dev = next(self.parameters()).device
-        return th.tensor([self.cameras.index(cn) for cn in cam_names], device=dev, dtype=th.long)
+        return th.tensor(
+            [self.cameras.index(cn) for cn in cam_names], device=dev, dtype=th.long
+        )
 
     def forward(self, image: th.Tensor, cam: th.Tensor) -> th.Tensor:
-        return th.cat([self.conv[cam[i]](image[i : i + 1, :, :, :]) for i in range(image.size(0))])
+        return th.cat(
+            [self.conv[cam[i]](image[i : i + 1, :, :, :]) for i in range(image.size(0))]
+        )
 
 
 class CalV5(CalBase):
@@ -129,7 +134,9 @@ class CalV5(CalBase):
         # pyre-fixme[4]: Attribute must be annotated.
         self.identity_idx = self.holder.to_idx([identity_camera]).item()
         # pyre-fixme[4]: Attribute must be annotated.
-        self.grey_idxs = [self.holder.to_idx([c]).item() for c in cameras if c.startswith("41")]
+        self.grey_idxs = [
+            self.holder.to_idx([c]).item() for c in cameras if c.startswith("41")
+        ]
 
         s = th.FloatTensor([0.37, 0.52, 0.52])
         self.holder.params.data[th.LongTensor(self.grey_idxs), :3] = s
@@ -181,7 +188,9 @@ class CalV5(CalBase):
     # pyre-fixme[14]: `load_state_dict` overrides method defined in `Module`
     #  inconsistently.
     def load_state_dict(self, state_dict, strict: bool = True):
-        state_dict = {k[7:]: v for k, v in state_dict.items() if k.startswith("holder.")}
+        state_dict = {
+            k[7:]: v for k, v in state_dict.items() if k.startswith("holder.")
+        }
         return self.holder.load_state_dict(state_dict, strict=strict)
 
     # pyre-fixme[14]: `state_dict` overrides method defined in `Module` inconsistently.
@@ -222,7 +231,9 @@ class CalV5(CalBase):
             else:
                 out = img * w[None, :, None, None] + b[None, :, None, None]
             outs.append(out)
-            hook_scales.append(self.gs_lrscale if idx in self.grey_idxs else self.col_lrscale)
+            hook_scales.append(
+                self.gs_lrscale if idx in self.grey_idxs else self.col_lrscale
+            )
 
         hook_scales = th.tensor(hook_scales, device=image.device, dtype=th.float32)
         cal_out = th.cat(outs)
@@ -263,12 +274,16 @@ class CalV6(CalBase):
         self.identity_camera = identity_camera
         self.cameras = cameras
         self.holder = ParamHolder(
-            (3 + 3,), cameras, init_value=th.as_tensor([1, 1, 1, 0, 0, 0], dtype=th.float32)
+            (3 + 3,),
+            cameras,
+            init_value=th.as_tensor([1, 1, 1, 0, 0, 0], dtype=th.float32),
         )
         self.identity_idx: int = self.holder.key_list.index(identity_camera)
         self.register_buffer(
             "identity",
-            th.as_tensor([1, 1, 1, 0, 0, 0], dtype=th.float32)[None].expand(len(cameras), -1),
+            th.as_tensor([1, 1, 1, 0, 0, 0], dtype=th.float32)[None].expand(
+                len(cameras), -1
+            ),
             persistent=False,
         )
         identity_w = th.zeros_like(self.identity)
@@ -280,12 +295,16 @@ class CalV6(CalBase):
     def load_state_dict(
         self, state_dict: Mapping[str, Any], strict: bool = True
     ) -> th.nn.modules.module._IncompatibleKeys:
-        state_dict = {k[7:]: v for k, v in state_dict.items() if k.startswith("holder.")}
+        state_dict = {
+            k[7:]: v for k, v in state_dict.items() if k.startswith("holder.")
+        }
         return self.holder.load_state_dict(state_dict, strict=strict)
 
     def name_to_idx(self, cam_names: Sequence[str]) -> th.Tensor:
         dev = next(self.parameters()).device
-        return th.tensor([self.cameras.index(cn) for cn in cam_names], device=dev, dtype=th.long)
+        return th.tensor(
+            [self.cameras.index(cn) for cn in cam_names], device=dev, dtype=th.long
+        )
 
     # pyre-fixme[14]: `state_dict` overrides method defined in `Module` inconsistently.
     def state_dict(
@@ -317,4 +336,3 @@ def make_cal(version: str, cal_kwargs: Dict[str, Any]) -> CalBase:
         raise ValueError(f"{version} not in {cal_registry.keys()}")
 
     return cal_registry[version](**cal_kwargs)
-

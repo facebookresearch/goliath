@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import warnings
@@ -18,13 +18,11 @@ __DEFAULT_WB_SCALE: np.ndarray = np.array([1.05, 0.95, 1.45], dtype=np.float32)
 
 
 @overload
-def linear2srgb(img: th.Tensor, gamma: float = 2.4) -> th.Tensor:
-    ...
+def linear2srgb(img: th.Tensor, gamma: float = 2.4) -> th.Tensor: ...
 
 
 @overload
-def linear2srgb(img: np.ndarray, gamma: float = 2.4) -> np.ndarray:
-    ...
+def linear2srgb(img: np.ndarray, gamma: float = 2.4) -> np.ndarray: ...
 
 
 def linear2srgb(
@@ -43,13 +41,11 @@ def linear2srgb(
 
 
 @overload
-def linear2color_corr(img: th.Tensor, dim: int = -1) -> th.Tensor:
-    ...
+def linear2color_corr(img: th.Tensor, dim: int = -1) -> th.Tensor: ...
 
 
 @overload
-def linear2color_corr(img: np.ndarray, dim: int = -1) -> np.ndarray:
-    ...
+def linear2color_corr(img: np.ndarray, dim: int = -1) -> np.ndarray: ...
 
 
 def linear2color_corr(
@@ -69,16 +65,24 @@ def linear2color_corr(
     if dim == -1:
         dim = len(img.shape) - 1
     if isinstance(img, th.Tensor):
-        scale = th.FloatTensor(color_scale).view([3 if i == dim else 1 for i in range(img.dim())])
+        scale = th.FloatTensor(color_scale).view(
+            [3 if i == dim else 1 for i in range(img.dim())]
+        )
         img = img * scale.to(img) / 1.1
         return th.clamp(
-            (((1.0 / (1 - black)) * 0.95 * th.clamp(img - black, 0, 2)).pow(1.0 / gamma))
+            (
+                ((1.0 / (1 - black)) * 0.95 * th.clamp(img - black, 0, 2)).pow(
+                    1.0 / gamma
+                )
+            )
             - 15.0 / 255.0,
             0,
             2,
         )
     else:
-        scale = np.array(color_scale).reshape([3 if i == dim else 1 for i in range(img.ndim)])
+        scale = np.array(color_scale).reshape(
+            [3 if i == dim else 1 for i in range(img.ndim)]
+        )
         img = img * scale / 1.1
         return np.clip(
             (((1.0 / (1 - black)) * 0.95 * np.clip(img - black, 0, 2)) ** (1.0 / gamma))
@@ -116,7 +120,9 @@ def linear2color_corr_inv(img: th.Tensor, dim: int) -> th.Tensor:
     assert img.shape[dim] == 3
     if dim == -1:
         dim = len(img.shape) - 1
-    scale = th.FloatTensor(color_scale).view([3 if i == dim else 1 for i in range(img.dim())])
+    scale = th.FloatTensor(color_scale).view(
+        [3 if i == dim else 1 for i in range(img.dim())]
+    )
 
     img = (img + 15.0 / 255.0).pow(gamma) / (0.95 / (1 - black)) + black
 
@@ -135,8 +141,7 @@ def mapped2linear(
     ccm: Union[List[List[float]], th.Tensor, np.ndarray] = DEFAULT_CCM,
     dc_offset: Union[List[float], th.Tensor, np.ndarray] = DEFAULT_DC_OFFSET,
     gamma: float = DEFAULT_GAMMA,
-) -> th.Tensor:
-    ...
+) -> th.Tensor: ...
 
 
 @overload
@@ -146,8 +151,7 @@ def mapped2linear(
     ccm: Union[List[List[float]], th.Tensor, np.ndarray] = DEFAULT_CCM,
     dc_offset: Union[List[float], th.Tensor, np.ndarray] = DEFAULT_DC_OFFSET,
     gamma: float = DEFAULT_GAMMA,
-) -> np.ndarray:
-    ...
+) -> np.ndarray: ...
 
 
 def mapped2linear(
@@ -212,7 +216,13 @@ def mapped2linear(
             min=EPS,
         ).pow(1.0 / gamma)
         img_corr = th.clamp(  # CCM * img_linear
-            th.einsum(th.DoubleTensor(ccm).to(img.device), ein_ccm, img_linear, ein_inp, ein_out),
+            th.einsum(
+                th.DoubleTensor(ccm).to(img.device),
+                ein_ccm,
+                img_linear,
+                ein_inp,
+                ein_out,
+            ),
             min=0.0,
             max=1.0,
         )
@@ -243,8 +253,7 @@ def mapped2srgb(
     ccm: Union[List[List[float]], th.Tensor, np.ndarray] = DEFAULT_CCM,
     dc_offset: Union[List[float], th.Tensor, np.ndarray] = DEFAULT_DC_OFFSET,
     gamma: float = DEFAULT_GAMMA,
-) -> th.Tensor:
-    ...
+) -> th.Tensor: ...
 
 
 @overload
@@ -254,8 +263,7 @@ def mapped2srgb(
     ccm: Union[List[List[float]], th.Tensor, np.ndarray] = DEFAULT_CCM,
     dc_offset: Union[List[float], th.Tensor, np.ndarray] = DEFAULT_DC_OFFSET,
     gamma: float = DEFAULT_GAMMA,
-) -> np.ndarray:
-    ...
+) -> np.ndarray: ...
 
 
 def mapped2srgb(
@@ -283,13 +291,11 @@ def mapped2srgb(
 
 
 @overload
-def srgb2linear(img: th.Tensor, gamma: float = 2.4) -> th.Tensor:
-    ...
+def srgb2linear(img: th.Tensor, gamma: float = 2.4) -> th.Tensor: ...
 
 
 @overload
-def srgb2linear(img: np.ndarray, gamma: float = 2.4) -> np.ndarray:
-    ...
+def srgb2linear(img: np.ndarray, gamma: float = 2.4) -> np.ndarray: ...
 
 
 def srgb2linear(
@@ -313,7 +319,9 @@ def scale_diff_image(diff_img: th.Tensor) -> th.Tensor:
 
     mval = abs(diff_img).max().item()
     pix_range = (0, 128 if mval > 1 else 0.5, 255 if mval > 1 else 1)
-    return (pix_range[1] * (diff_img / mval) + pix_range[1]).clamp(pix_range[0], pix_range[2])
+    return (pix_range[1] * (diff_img / mval) + pix_range[1]).clamp(
+        pix_range[0], pix_range[2]
+    )
 
 
 class LaplacianTexture(th.nn.Module):
@@ -330,10 +338,14 @@ class LaplacianTexture(th.nn.Module):
         for level in range(n_levels):
             if init_scalar is not None:
                 pyr_texs.append(
-                    th.nn.Parameter(init_scalar * th.ones(1, n_channels, 2**level, 2**level))
+                    th.nn.Parameter(
+                        init_scalar * th.ones(1, n_channels, 2**level, 2**level)
+                    )
                 )
             else:
-                pyr_texs.append(th.nn.Parameter(th.zeros(1, n_channels, 2**level, 2**level)))
+                pyr_texs.append(
+                    th.nn.Parameter(th.zeros(1, n_channels, 2**level, 2**level))
+                )
 
         self.pyr_texs = th.nn.ParameterList(pyr_texs)
 
@@ -341,7 +353,9 @@ class LaplacianTexture(th.nn.Module):
         tex = self.pyr_texs[0]
         for level in range(1, self.n_levels):
             tex = (
-                thf.interpolate(tex, scale_factor=2, mode="bilinear", align_corners=False)
+                thf.interpolate(
+                    tex, scale_factor=2, mode="bilinear", align_corners=False
+                )
                 + self.pyr_texs[level]
             )
         return tex
@@ -365,7 +379,9 @@ class LaplacianTexture(th.nn.Module):
         gtex = self.pyr_texs[0].grad
         for level in range(1, self.n_levels):
             gtex = (
-                thf.interpolate(gtex, scale_factor=2, mode="bilinear", align_corners=False)
+                thf.interpolate(
+                    gtex, scale_factor=2, mode="bilinear", align_corners=False
+                )
                 + self.pyr_texs[level].grad
             )
         return gtex
@@ -430,7 +446,9 @@ def tensor2rgbjet(
         x_min: The output color will be normalized as (x-x_min)/(x_max-x_min)*255.
         x_min = tensor.min() if None is given.
     """
-    return cv2.applyColorMap(tensor2rgb(tensor, x_max=x_max, x_min=x_min), cv2.COLORMAP_JET)
+    return cv2.applyColorMap(
+        tensor2rgb(tensor, x_max=x_max, x_min=x_min), cv2.COLORMAP_JET
+    )
 
 
 def tensor2rgb(
@@ -594,7 +612,9 @@ def feature2rgb(x: Union[th.Tensor, np.ndarray], scale: int = -1) -> np.ndarray:
     rgb_norm = (rgb - rgb.min()) / (rgb.max() - rgb.min())
     rgb_norm = (rgb_norm * 255).astype(np.uint8)
     if scale != -1:
-        rgb_norm = cv2.resize(rgb_norm, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        rgb_norm = cv2.resize(
+            rgb_norm, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+        )
     return rgb_norm
 
 
@@ -607,7 +627,9 @@ def kpts2delta(kpts: th.Tensor, size: Sequence[int]) -> th.Tensor:
         th.arange(w, dtype=kpts.dtype, device=kpts.device),
         indexing="xy",
     )
-    delta = kpts.unflatten(-1, (1, 1, 2)) - th.stack(grid, dim=-1).unflatten(0, (1, 1, h))
+    delta = kpts.unflatten(-1, (1, 1, 2)) - th.stack(grid, dim=-1).unflatten(
+        0, (1, 1, h)
+    )
     return delta
 
 
@@ -671,18 +693,29 @@ def make_image_grid(
             data[key] = thf.interpolate(data[key], size=(img_h, img_w), mode="area")
 
         if scale_factor is not None:
-            data[key] = thf.interpolate(data[key], scale_factor=scale_factor, mode="area")
+            data[key] = thf.interpolate(
+                data[key], scale_factor=scale_factor, mode="area"
+            )
 
     # Make an image for each grid cell by labeling and concatenating a sample
     # from each key in the data.
     cell_imgs = []
     for i in range(n_cells):
-        imgs = [data[key][i].byte().cpu().numpy().transpose(1, 2, 0) for key in keys_to_draw]
+        imgs = [
+            data[key][i].byte().cpu().numpy().transpose(1, 2, 0) for key in keys_to_draw
+        ]
         imgs = [np.ascontiguousarray(img) for img in imgs]
         if draw_labels:
             for img, label in zip(imgs, keys_to_draw):
                 cv2.putText(
-                    img, label, (31, 31), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 2, cv2.LINE_AA
+                    img,
+                    label,
+                    (31, 31),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    (0, 0, 0),
+                    2,
+                    cv2.LINE_AA,
                 )
                 cv2.putText(
                     img,
@@ -721,7 +754,11 @@ def make_image_grid(
                 max_side = max(gh_, gw_)
                 leftover = gh_ * gw_ - n_cells
 
-                if diff <= best_diff and max_side <= best_side and leftover <= best_leftover:
+                if (
+                    diff <= best_diff
+                    and max_side <= best_side
+                    and leftover <= best_leftover
+                ):
                     gh = gh_
                     gw = gw_
                     best_diff = diff
@@ -733,7 +770,9 @@ def make_image_grid(
     for i in range(n_cells):
         gr = i // gw
         gc = i % gw
-        img[gr * cell_h : (gr + 1) * cell_h, gc * cell_w : (gc + 1) * cell_w] = cell_imgs[i]
+        img[gr * cell_h : (gr + 1) * cell_h, gc * cell_w : (gc + 1) * cell_w] = (
+            cell_imgs[i]
+        )
 
     return img
 
@@ -788,11 +827,15 @@ def make_image_grid_batched(
 
     with th.no_grad():
         # Make all images contain 3 channels
-        data_list = [x.expand(-1, 3, -1, -1) if x.shape[1] == 1 else x for x in data_list]
+        data_list = [
+            x.expand(-1, 3, -1, -1) if x.shape[1] == 1 else x for x in data_list
+        ]
 
         # Convert to byte
         scale = 255.0 if input_is_in_0_1 else 1.0
-        data_list = [x.mul(scale).round().clamp(min=0, max=255).byte() for x in data_list]
+        data_list = [
+            x.mul(scale).round().clamp(min=0, max=255).byte() for x in data_list
+        ]
 
         # Convert to numpy and make it BHWC
         data_list = [x.cpu().numpy().transpose(0, 2, 3, 1) for x in data_list]
@@ -806,7 +849,14 @@ def make_image_grid_batched(
             img = np.ascontiguousarray(data_list[j][i])
             if draw_labels:
                 cv2.putText(
-                    img, label, (31, 31), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 2, cv2.LINE_AA
+                    img,
+                    label,
+                    (31, 31),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    (0, 0, 0),
+                    2,
+                    cv2.LINE_AA,
                 )
                 cv2.putText(
                     img,

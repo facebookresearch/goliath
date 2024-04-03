@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import logging
@@ -75,7 +75,9 @@ def compute_neighbours(
     return nbs_idxs, nbs_weights
 
 
-def compute_v2uv(n_verts: int, vi: th.Tensor, vti: th.Tensor, n_max: int = 4) -> th.Tensor:
+def compute_v2uv(
+    n_verts: int, vi: th.Tensor, vti: th.Tensor, n_max: int = 4
+) -> th.Tensor:
     """Computes mapping from vertex indices to texture indices.
 
     Args:
@@ -98,7 +100,9 @@ def compute_v2uv(n_verts: int, vi: th.Tensor, vti: th.Tensor, n_max: int = 4) ->
     return v2uv
 
 
-def values_to_uv(values: th.Tensor, index_img: th.Tensor, bary_img: th.Tensor) -> th.Tensor:
+def values_to_uv(
+    values: th.Tensor, index_img: th.Tensor, bary_img: th.Tensor
+) -> th.Tensor:
     uv_size = index_img.shape[0]
     index_mask = th.all(index_img != -1, dim=-1)
     idxs_flat = index_img[index_mask].to(th.int64)
@@ -185,9 +189,9 @@ def compute_tbn_uv(
     tangents = tangents / th.norm(tangents, dim=-1, keepdim=True).clamp(min=eps)
 
     bitangents = th.cross(normals, tangents, dim=-1)
-    bitangents = bitangents / th.norm(bitangents, dim=-1, keepdim=True).clamp(min=eps).clamp(
+    bitangents = bitangents / th.norm(bitangents, dim=-1, keepdim=True).clamp(
         min=eps
-    )
+    ).clamp(min=eps)
     return tangents, bitangents, normals
 
 
@@ -222,12 +226,16 @@ class GeometryModule(nn.Module):
             uv_shape=uv_size,
             flip_uv=flip_uv,
         ).cpu()
-        face_index, bary_image = make_uv_barys(self.vt, self.vti, uv_shape=uv_size, flip_uv=flip_uv)
+        face_index, bary_image = make_uv_barys(
+            self.vt, self.vti, uv_shape=uv_size, flip_uv=flip_uv
+        )
         if impaint:
             # TODO: have an option to pre-compute this?
             assert isinstance(uv_size, int)
             if uv_size >= 1024:
-                logger.info("impainting index image might take a while for sizes >= 1024")
+                logger.info(
+                    "impainting index image might take a while for sizes >= 1024"
+                )
 
             index_image, bary_image = index_image_impaint(
                 index_image, bary_image, impaint_threshold
@@ -238,12 +246,17 @@ class GeometryModule(nn.Module):
         self.register_buffer("face_index_image", face_index.cpu())
 
     def render_index_images(
-        self, uv_size: Union[Tuple[int, int], int], flip_uv: bool = False, impaint: bool = False
+        self,
+        uv_size: Union[Tuple[int, int], int],
+        flip_uv: bool = False,
+        impaint: bool = False,
     ) -> Tuple[th.Tensor, th.Tensor]:
         index_image = make_uv_vert_index(
             self.vt, self.vi, self.vti, uv_shape=uv_size, flip_uv=flip_uv
         )
-        _, bary_image = make_uv_barys(self.vt, self.vti, uv_shape=uv_size, flip_uv=flip_uv)
+        _, bary_image = make_uv_barys(
+            self.vt, self.vti, uv_shape=uv_size, flip_uv=flip_uv
+        )
 
         if impaint:
             index_image, bary_image = index_image_impaint(
@@ -264,7 +277,9 @@ class GeometryModule(nn.Module):
         return sample_uv(values_uv, self.vt, self.v2uv.to(th.long))
 
 
-def compute_view_cos(verts: th.Tensor, faces: th.Tensor, camera_pos: th.Tensor) -> th.Tensor:
+def compute_view_cos(
+    verts: th.Tensor, faces: th.Tensor, camera_pos: th.Tensor
+) -> th.Tensor:
     vn = F.normalize(vert_normals_v2(verts, faces), dim=-1)
     v2c = F.normalize(verts - camera_pos[:, np.newaxis], dim=-1)
     return th.einsum("bnd,bnd->bn", vn, v2c)
@@ -280,7 +295,9 @@ def interpolate_values_mesh(
     if src_values.shape == 2:
         return (src_values[src_faces[idxs]] * weights[..., np.newaxis]).sum(dim=1)
     else:  # src.verts.shape == 3:
-        return (src_values[:, src_faces[idxs]] * weights[np.newaxis, ..., np.newaxis]).sum(dim=2)
+        return (
+            src_values[:, src_faces[idxs]] * weights[np.newaxis, ..., np.newaxis]
+        ).sum(dim=2)
 
 
 def depth_discontuity_mask(
@@ -299,11 +316,14 @@ def depth_discontuity_mask(
             device=device,
         )
 
-        disc_mask = (th.norm(F.conv2d(depth, kernel, bias=None, padding=1), dim=1) > threshold)[
-            :, np.newaxis
-        ]
         disc_mask = (
-            F.avg_pool2d(disc_mask.float(), pool_ksize, stride=1, padding=pool_ksize // 2) > 0.0
+            th.norm(F.conv2d(depth, kernel, bias=None, padding=1), dim=1) > threshold
+        )[:, np.newaxis]
+        disc_mask = (
+            F.avg_pool2d(
+                disc_mask.float(), pool_ksize, stride=1, padding=pool_ksize // 2
+            )
+            > 0.0
         )
 
     return disc_mask
@@ -320,7 +340,9 @@ def convert_camera_parameters(Rt: th.Tensor, K: th.Tensor) -> Dict[str, th.Tenso
     }
 
 
-def closest_point(mesh: Trimesh, points: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def closest_point(
+    mesh: Trimesh, points: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     v = mesh.vertices
     vi = mesh.faces
     # pyre-ignore
@@ -451,7 +473,8 @@ def compute_tbn(
     vt01 = vt1 - vt0
     vt02 = vt2 - vt0
     f = th.tensor([1.0], device=geom.device) / (
-        vt01[None, ..., 0] * vt02[None, ..., 1] - vt01[None, ..., 1] * vt02[None, ..., 0]
+        vt01[None, ..., 0] * vt02[None, ..., 1]
+        - vt01[None, ..., 1] * vt02[None, ..., 0]
     )
     tangent = f[..., None] * th.stack(
         [

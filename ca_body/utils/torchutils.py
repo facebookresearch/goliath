@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 from typing import Optional, Tuple, Sequence, TypeVar, Union, Mapping, Any, List, Dict
@@ -9,7 +9,11 @@ import torch as th
 import numpy as np
 
 TensorOrContainer = Union[
-    th.Tensor, str, int, Sequence["TensorOrContainer"], Mapping[str, "TensorOrContainer"]
+    th.Tensor,
+    str,
+    int,
+    Sequence["TensorOrContainer"],
+    Mapping[str, "TensorOrContainer"],
 ]
 NdarrayOrContainer = Union[
     np.ndarray,
@@ -37,13 +41,12 @@ TensorNdarrayModuleOrContainer = Union[
 ]
 TTensorOrContainer = TypeVar("TTensorOrContainer", bound=TensorOrContainer)
 TNdarrayOrContainer = TypeVar("TNdarrayOrContainer", bound=NdarrayOrContainer)
-TTensorNdarrayOrContainer = TypeVar("TTensorNdarrayOrContainer", bound=TensorNdarrayOrContainer)
+TTensorNdarrayOrContainer = TypeVar(
+    "TTensorNdarrayOrContainer", bound=TensorNdarrayOrContainer
+)
 TTensorNdarrayModuleOrContainer = TypeVar(
     "TTensorNdarrayModuleOrContainer", bound=TensorNdarrayModuleOrContainer
 )
-
-
-import torch as th
 
 import logging
 
@@ -68,7 +71,9 @@ class ParamHolder(th.nn.Module):
         if init_value is not None:
             self.params.data[:] = init_value
 
-    def state_dict(self, *args: Any, saving: bool = False, **kwargs: Any) -> Dict[str, Any]:
+    def state_dict(
+        self, *args: Any, saving: bool = False, **kwargs: Any
+    ) -> Dict[str, Any]:
         sd = super().state_dict(*args, **kwargs)
         if saving:
             assert "key_list" not in sd
@@ -85,7 +90,9 @@ class ParamHolder(th.nn.Module):
         # with the overrided function in its superclass.
         sd = dict(state_dict)
         if "key_list" not in sd:
-            logger.warning("Missing key list list in state dict, only checking params shape.")
+            logger.warning(
+                "Missing key list list in state dict, only checking params shape."
+            )
             assert sd["params"].shape == self.params.shape
             sd["key_list"] = self.key_list
 
@@ -136,7 +143,6 @@ class ParamHolder(th.nn.Module):
 
     def forward(self, idxs: th.Tensor) -> th.Tensor:
         return self.params[idxs]
-    
 
 
 def to_device(
@@ -219,9 +225,8 @@ def to_device(
             out = tuple(out)
         return out
     elif isinstance(things, np.ndarray):
-        return to_device(th.from_numpy(things), device, cache, key, verbose, max_bs, non_blocking)
+        return to_device(
+            th.from_numpy(things), device, cache, key, verbose, max_bs, non_blocking
+        )
     else:
         return things
-
-
-

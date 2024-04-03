@@ -8,9 +8,10 @@ from enum import Enum
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
 import numpy as np
+
 
 import pandas as pd
 import pillow_avif
@@ -50,6 +51,9 @@ def get_capture_type(capture_name: str) -> CaptureType:
     )
 
 
+logger = logging.getLogger(__name__)
+
+
 class BodyDataset(IterableDataset):
     def __init__(
         self,
@@ -62,6 +66,7 @@ class BodyDataset(IterableDataset):
         if split not in ["train", "test"]:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
         self.root_path: Path = Path(root_path)
+        self.shared_assets_path: Path = shared_assets_path
         self.split: str = split
         self.fully_lit_only: bool = fully_lit_only
         self.shuffle: bool = shuffle
@@ -335,12 +340,15 @@ class BodyDataset(IterableDataset):
         scan_mesh = self.load_scan_mesh(frame)
         image = self.load_image(frame, camera)
         segmentation_parts = self.load_segmentation_parts(frame, camera)
-
+        segmentation_parts = pil_to_tensor(self.load_segmentation_parts(frame, camera))
+        segmentation_fg = (segmentation_parts != 0.0).to(th.float32)
+        camera_parameters = self.get_camera_parameters(camera)
         row = {
             "camera_id": camera,
             "frame_id": frame,
             "image": image,
             "keypoints_3d": kpts,
+            "ambient_occlusion": pil_to_tensor(ambient_occlusion) / 255.0,
             "registration_vertices": registration_vertices,
             "segmentation_parts": segmentation_parts,
             "pose": pose,
@@ -348,7 +356,10 @@ class BodyDataset(IterableDataset):
             "skeleton_scales": skeleton_scales,
             "ambient_occlusion_mean": ambient_occlusion_mean,
             "color_mean": color_mean,
+            "segmentation_fg": segmentation_fg,
+            "pose": pose,
             "scan_mesh": scan_mesh,
+            **camera_parameters,
         }
         return row
 
@@ -439,17 +450,27 @@ class BodyDataset(IterableDataset):
 
         # NOTE: not a real shuffle, just a random
         if self.shuffle:
-            np.random.shuffle(frame_list)
-            np.random.shuffle(camera_list)
-
-        for frame in frame_list:
-            for camera in camera_list:
+            while True:
+                frame = np.random.choice(frame_list)
+                camera = np.random.choice(camera_list)
                 try:
                     yield self.get(frame, camera)
                 except Exception as e:
                     logger.warning(
-                        f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping. Error: {e}"
+                        f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
                     )
+                    logger.warning(f"{e}")
+
+        else:
+            for frame in frame_list:
+                for camera in camera_list:
+                    try:
+                        yield self.get(frame, camera)
+                    except Exception as e:
+                        logger.warning(
+                            f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
+                        )
+                        logger.warning(f"{e}")
 
     def __len__(self):
         return len(self.get_frame_list(self.fully_lit_only)) * len(
@@ -459,6 +480,18 @@ class BodyDataset(IterableDataset):
 
 def worker_init_fn(worker_id: int):
     worker_seed = (torch.initial_seed() + worker_id) % 2**32
+    np.random.seed(worker_seed)
+
+
+def collate_fn(items):
+    """Modified form of `torch.utils.data.dataloader.default_collate`
+    that will strip samples from the batch if they are ``None``."""
+    items = [item for item in items if item is not None]
+    return default_collate(items) if len(items) > 0 else None
+
+
+def worker_init_fn(worker_id: int):
+    worker_seed = th.initial_seed() % 2**32
     np.random.seed(worker_seed)
 
 
