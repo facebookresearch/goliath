@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import torch as th
@@ -17,8 +17,8 @@ class UNetWB(nn.Module):
         in_channels: int,
         out_channels: int,
         size: int,
-        n_init_ftrs: int=8,
-        out_scale: float =0.1,
+        n_init_ftrs: int = 8,
+        out_scale: float = 0.1,
     ):
         # super().__init__(*args, **kwargs)
         super().__init__()
@@ -50,7 +50,9 @@ class UNetWB(nn.Module):
             nn.LeakyReLU(0.2),
         )
         self.up1 = nn.Sequential(
-            ConvTranspose2dWNUB(16 * F, 8 * F, self.size // 16, self.size // 16, 4, 2, 1),
+            ConvTranspose2dWNUB(
+                16 * F, 8 * F, self.size // 16, self.size // 16, 4, 2, 1
+            ),
             nn.LeakyReLU(0.2),
         )
         self.up2 = nn.Sequential(
@@ -68,7 +70,9 @@ class UNetWB(nn.Module):
         self.up5 = nn.Sequential(
             ConvTranspose2dWNUB(F, F, self.size, self.size, 4, 2, 1), nn.LeakyReLU(0.2)
         )
-        self.out = Conv2dWNUB(F + in_channels, out_channels, self.size, self.size, kernel_size=1)
+        self.out = Conv2dWNUB(
+            F + in_channels, out_channels, self.size, self.size, kernel_size=1
+        )
         self.apply(lambda x: glorot(x, 0.2))
         glorot(self.out, 1.0)
 
@@ -124,26 +128,36 @@ class UNetWBConcat(nn.Module):
             nn.LeakyReLU(0.2),
         )
         self.up1 = nn.Sequential(
-            la.ConvTranspose2dWNUB(16 * F, 8 * F, self.size // 16, self.size // 16, 4, 2, 1),
+            la.ConvTranspose2dWNUB(
+                16 * F, 8 * F, self.size // 16, self.size // 16, 4, 2, 1
+            ),
             nn.LeakyReLU(0.2),
         )
         self.up2 = nn.Sequential(
-            la.ConvTranspose2dWNUB(2 * 8 * F, 4 * F, self.size // 8, self.size // 8, 4, 2, 1),
+            la.ConvTranspose2dWNUB(
+                2 * 8 * F, 4 * F, self.size // 8, self.size // 8, 4, 2, 1
+            ),
             nn.LeakyReLU(0.2),
         )
         self.up3 = nn.Sequential(
-            la.ConvTranspose2dWNUB(2 * 4 * F, 2 * F, self.size // 4, self.size // 4, 4, 2, 1),
+            la.ConvTranspose2dWNUB(
+                2 * 4 * F, 2 * F, self.size // 4, self.size // 4, 4, 2, 1
+            ),
             nn.LeakyReLU(0.2),
         )
         self.up4 = nn.Sequential(
-            la.ConvTranspose2dWNUB(2 * 2 * F, F, self.size // 2, self.size // 2, 4, 2, 1),
+            la.ConvTranspose2dWNUB(
+                2 * 2 * F, F, self.size // 2, self.size // 2, 4, 2, 1
+            ),
             nn.LeakyReLU(0.2),
         )
         self.up5 = nn.Sequential(
             la.ConvTranspose2dWNUB(2 * F, F, self.size, self.size, 4, 2, 1),
             nn.LeakyReLU(0.2),
         )
-        self.out = la.Conv2dWNUB(F + in_channels, out_channels, self.size, self.size, kernel_size=1)
+        self.out = la.Conv2dWNUB(
+            F + in_channels, out_channels, self.size, self.size, kernel_size=1
+        )
         self.apply(lambda x: la.glorot(x, 0.2))
         la.glorot(self.out, 1.0)
 
@@ -214,7 +228,9 @@ class UNetW(nn.Module):
             la.ConvTranspose2dWN(2 * F, F, kernel_size, 2, 1),
             nn.LeakyReLU(0.2),
         )
-        self.up5 = nn.Sequential(la.ConvTranspose2dWN(F, F, kernel_size, 2, 1), nn.LeakyReLU(0.2))
+        self.up5 = nn.Sequential(
+            la.ConvTranspose2dWN(F, F, kernel_size, 2, 1), nn.LeakyReLU(0.2)
+        )
         self.out = la.Conv2dWN(F + in_channels, out_channels, kernel_size=1)
         self.apply(weights_initializer(0.2))
         self.out.apply(weights_initializer(1.0))
