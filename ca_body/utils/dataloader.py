@@ -1,7 +1,7 @@
 import argparse
 import json
-import zipfile
 import logging
+import zipfile
 
 from enum import Enum
 from functools import lru_cache
@@ -34,8 +34,6 @@ class CaptureType(Enum):
 # Head and hand capture types only have assets for fully lit frames.
 ASSETS_ONLY_FOR_FULLY_LIT_FRAMES = [CaptureType.HEAD, CaptureType.HAND]
 
-root = logging.getLogger()
-root.setLevel(logging.DEBUG)
 
 def get_capture_type(capture_name: str) -> CaptureType:
     if "Head" in capture_name:
@@ -358,7 +356,7 @@ class BodyDataset(IterableDataset):
 
     def _get_for_head(self, frame: int, camera: int) -> Dict[str, Any]:
         is_fully_lit_frame: bool = frame in self.get_frame_set(fully_lit_only=True)
-        # head_pose = self.load_head_pose(frame)
+        head_pose = self.load_head_pose(frame)
         image = self.load_image(frame, camera)
         kpts = self.load_3d_keypoints(frame)
         reg_verts = self.load_registration_vertices(frame)
@@ -378,7 +376,7 @@ class BodyDataset(IterableDataset):
             "camera_id": camera,
             "frame_id": frame,
             "is_fully_lit_frame": is_fully_lit_frame,
-            # "head_pose": head_pose,
+            "head_pose": head_pose,
             "image": image,
             "keypoints_3d": kpts,
             "registration_vertices": reg_verts,
@@ -447,13 +445,11 @@ class BodyDataset(IterableDataset):
     def __iter__(self):
         for frame in self.get_frame_set(self.fully_lit_only):
             for camera in self.get_camera_list():
-
                 # yield self._get_fn(frame, camera)
-
                 try:
                     yield self._get_fn(frame, camera)
                 except Exception as e:
-                    print(e)
+                    logger.error(f"Error loading frame {frame} camera {camera}: {e}")
                     continue
 
     def __len__(self):
@@ -463,6 +459,9 @@ class BodyDataset(IterableDataset):
 
 
 if __name__ == "__main__":
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=Path, help="Root path to capture data")
     parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
