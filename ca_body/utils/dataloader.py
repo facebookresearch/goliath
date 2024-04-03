@@ -2,12 +2,13 @@ import argparse
 import json
 import logging
 import zipfile
+from collections import namedtuple
 
 from enum import Enum
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -31,8 +32,7 @@ class CaptureType(Enum):
     HAND = 3
 
 
-# Head and hand capture types only have assets for fully lit frames.
-ASSETS_ONLY_FOR_FULLY_LIT_FRAMES = [CaptureType.HEAD, CaptureType.HAND]
+Polygon = namedtuple("Polygon", ["vertices", "faces"])
 
 
 def get_capture_type(capture_name: str) -> CaptureType:
@@ -48,34 +48,31 @@ def get_capture_type(capture_name: str) -> CaptureType:
 
 
 class BodyDataset(IterableDataset):
-    def __init__(self, root_path: Path, split: str, fully_lit_only: bool = False):
-        assert split in ["train", "test"]
+    def __init__(self, root_path: Path, split: str, fully_lit_only: bool):
+        if split not in ["train", "test"]:
+            raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
         self.root_path: Path = Path(root_path)
         self.split: str = split
         self.fully_lit_only: bool = fully_lit_only
 
         self.capture_type: CaptureType = get_capture_type(self.root_path.name)
-        self._get_fn: Callable[[int, int], Any] = None
-
-        if self.capture_type == CaptureType.BODY:
-            self._get_fn = self._get_for_body
-        if self.capture_type == CaptureType.HEAD:
-            self._get_fn = self._get_for_head
-        if self.capture_type == CaptureType.HAND:
-            self._get_fn = self._get_for_hand
+        self._get_fn: Callable = {
+            CaptureType.BODY: self._get_for_body,
+            CaptureType.HEAD: self._get_for_head,
+            CaptureType.HAND: self._get_for_hand,
+        }.get(self.capture_type)
+        assert self._get_fn is not None
 
     def asset_exists(self, frame: int) -> bool:
-        if self.capture_type not in ASSETS_ONLY_FOR_FULLY_LIT_FRAMES:
-            # Assets exist for every frame
-            return True
-        # Assets only exist if this frame is fully lit
-        return frame in self.get_frame_set(fully_lit_only=True)
+        if self.capture_type in [CaptureType.HEAD, CaptureType.HAND]:
+            # Assets only exist for fully lit frames
+            return frame in self.get_frame_set(fully_lit_only=True)
+        return True
 
     @lru_cache(maxsize=1)
     def get_camera_calibration(self) -> Dict[str, Any]:
         with open(self.root_path / "camera_calibration.json", "r") as f:
-            camera_calibration = json.load(f)
-        return camera_calibration
+            return json.load(f)
 
     @lru_cache(maxsize=1)
     def get_camera_list(self) -> List[int]:
@@ -94,8 +91,9 @@ class BodyDataset(IterableDataset):
         return {f for f in fully_lit if f in frame_list}
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_3d_keypoints(self, frame: int):
+    def load_3d_keypoints(self, frame: int) -> Optional[Dict[str, Any]]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "keypoints_3d" / "keypoints_3d.zip"
@@ -108,8 +106,9 @@ class BodyDataset(IterableDataset):
         #     content = json.loads(f.read())
         # return content
 
-    def load_segmentation_parts(self, frame: int, camera: int):
+    def load_segmentation_parts(self, frame: int, camera: int) -> Image.Image:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "segmentation_parts" / f"cam{camera:06d}.zip"
@@ -125,8 +124,9 @@ class BodyDataset(IterableDataset):
         # )
         # return Image.open(png_path)
 
-    def load_segmentation_fgbg(self, frame: int, camera: int):
+    def load_segmentation_fgbg(self, frame: int, camera: int) -> Image.Image:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "segmentation_fgbg" / f"cam{camera:06d}.zip"
@@ -147,22 +147,23 @@ class BodyDataset(IterableDataset):
 
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"cam{camera:06d}/{frame:06d}.avif", "r") as avif_file:
-                avif_image = Image.open(BytesIO(avif_file.read()))
-                return avif_image
+                return Image.open(BytesIO(avif_file.read()))
 
         # avif_path = self.root_path / "image" / f"cam{camera:06d}" / f"{frame:06d}.avif"
         # return Image.open(avif_path)
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_registration_vertices(self, frame: int):
+    def load_registration_vertices(self, frame: int) -> Optional[Polygon]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "kinematic_tracking" / "registration_vertices.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"registration_vertices/{frame:06d}.ply", "r") as ply_file:
+                # No faces are included
                 vertices, _ = load_ply(BytesIO(ply_file.read()))
-                return vertices
+                return Polygon(vertices=vertices, faces=None)
 
         # verts_path = (
         #     self.root_path
@@ -172,11 +173,11 @@ class BodyDataset(IterableDataset):
         # )
         # with open(verts_path, "rb") as f:
         #     # No faces are included
-        #     verticies, _ = load_ply(f)
-        # return verticies
+        #     vertices, _ = load_ply(f)
+        # return vertices
 
     @lru_cache(maxsize=1)
-    def load_registration_vertices_mean(self):
+    def load_registration_vertices_mean(self) -> np.ndarray:
         mean_path = (
             self.root_path / "kinematic_tracking" / "registration_vertices_mean.npy"
         )
@@ -188,19 +189,18 @@ class BodyDataset(IterableDataset):
             self.root_path / "kinematic_tracking" / "registration_vertices_variance.txt"
         )
         with open(verts_path, "r") as f:
-            variance = float(f.read())
-        return variance
+            return float(f.read())
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_pose(self, frame: int):
+    def load_pose(self, frame: int) -> Optional[np.ndarray]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "kinematic_tracking" / "pose.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"pose/{frame:06d}.txt", "r") as f:
-                pose_arr = np.array([float(i) for i in f.read().splitlines()])
-                return pose_arr
+                return np.array([float(i) for i in f.read().splitlines()])
 
         # pose_path = self.root_path / "kinematic_tracking" / "pose" / f"{frame:06d}.txt"
         # with open(pose_path, "r") as f:
@@ -208,29 +208,29 @@ class BodyDataset(IterableDataset):
         # return pose_arr
 
     @lru_cache(maxsize=1)
-    def load_template_mesh(self):
+    def load_template_mesh(self) -> Polygon:
         mesh_path = self.root_path / "kinematic_tracking" / "template_mesh.ply"
         with open(mesh_path, "rb") as f:
-            verticies, faces = load_ply(f)
-        return verticies, faces
+            vertices, faces = load_ply(f)
+            return Polygon(vertices=vertices, faces=faces)
 
     @lru_cache(maxsize=1)
-    def load_template_mesh_unscaled(self):
+    def load_template_mesh_unscaled(self) -> Polygon:
         mesh_path = self.root_path / "kinematic_tracking" / "template_mesh_unscaled.ply"
         with open(mesh_path, "rb") as f:
-            verticies, faces = load_ply(f)
-        return verticies, faces
+            vertices, faces = load_ply(f)
+            return Polygon(vertices=vertices, faces=faces)
 
     @lru_cache(maxsize=1)
-    def load_skeleton_scales(self):
+    def load_skeleton_scales(self) -> np.ndarray:
         scales_path = self.root_path / "kinematic_tracking" / "skeleton_scales.txt"
         with open(scales_path, "r") as f:
-            scales_arr = np.array([float(i) for i in f.read().splitlines()])
-        return scales_arr
+            return np.array([float(i) for i in f.read().splitlines()])
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_ambient_occlusion(self, frame: int) -> Image:
+    def load_ambient_occlusion(self, frame: int) -> Optional[Image.Image]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
         zip_path = self.root_path / "uv_image" / "ambient_occlusion.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
@@ -242,12 +242,12 @@ class BodyDataset(IterableDataset):
         # return Image.open(png_path)
 
     @lru_cache(maxsize=1)
-    def load_ambient_occlusion_mean(self) -> Image:
+    def load_ambient_occlusion_mean(self) -> Image.Image:
         png_path = self.root_path / "uv_image" / "ambient_occlusion_mean.png"
         return Image.open(png_path)
 
     @lru_cache(maxsize=1)
-    def load_color_mean(self) -> Image:
+    def load_color_mean(self) -> Image.Image:
         png_path = self.root_path / "uv_image" / "color_mean.png"
         return Image.open(png_path)
 
@@ -255,12 +255,12 @@ class BodyDataset(IterableDataset):
     def load_color_variance(self) -> float:
         color_var_path = self.root_path / "uv_image" / "color_variance.txt"
         with open(color_var_path, "r") as f:
-            color_var = float(f.read())
-        return color_var
+            return float(f.read())
 
     @lru_cache(maxsize=1)
-    def load_color(self, frame: int) -> Image:
+    def load_color(self, frame: int) -> Optional[Image.Image]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "uv_image" / "color.zip"
@@ -272,23 +272,24 @@ class BodyDataset(IterableDataset):
         # return Image.open(color_png_path)
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_scan_mesh(self, frame: int):
+    def load_scan_mesh(self, frame: int) -> Optional[Polygon]:
         if not self.asset_exists(frame):
+            # Asset only exists for fully lit frames
             return None
 
         zip_path = self.root_path / "scan_mesh" / "scan_mesh.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"{frame:06d}.ply", "r") as ply_file:
                 vertices, faces = load_ply(BytesIO(ply_file.read()))
-                return vertices, faces
+                return Polygon(vertices=vertices, faces=faces)
 
         # ply_path = self.root_path / "scan_mesh" / f"{frame:06d}.ply"
         # with open(ply_path, "rb") as f:
-        #     verticies, faces = load_ply(f)
-        # return verticies, faces
+        #     vertices, faces = load_ply(f)
+        # return vertices, faces
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_head_pose(self, frame: int):
+    def load_head_pose(self, frame: int) -> np.ndarray:
         zip_path = self.root_path / "head_pose" / "head_pose.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"{frame:06d}.txt", "r") as txt_file:
@@ -302,7 +303,7 @@ class BodyDataset(IterableDataset):
         # return pose_arr
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_background(self, camera: int):
+    def load_background(self, camera: int) -> Image.Image:
         zip_path = self.root_path / "per_view_background" / "per_view_background.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"{camera:05d}.png", "r") as png_file:
@@ -320,7 +321,7 @@ class BodyDataset(IterableDataset):
             return json.load(f)
 
     @lru_cache(maxsize=1)
-    def load_light_pattern_meta(self):
+    def load_light_pattern_meta(self) -> Dict[str, Any]:
         light_pattern_path = self.root_path / "lights" / "light_pattern_metadata.json"
         with open(light_pattern_path, "r") as f:
             return json.load(f)
@@ -449,7 +450,7 @@ class BodyDataset(IterableDataset):
                 try:
                     yield self._get_fn(frame, camera)
                 except Exception as e:
-                    logger.error(f"Error loading frame {frame} camera {camera}: {e}")
+                    logging.error(f"Error loading frame {frame} camera {camera}: {e}")
                     continue
 
     def __len__(self):
@@ -467,7 +468,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
     args = parser.parse_args()
 
-    dataset = BodyDataset(root_path=args.input, split=args.split)
+    dataset = BodyDataset(root_path=args.input, split=args.split, fully_lit_only=False)
     # dataloader = DataLoader(
     #     dataset,
     #     batch_size=1,
