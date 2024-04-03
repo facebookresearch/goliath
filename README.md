@@ -32,7 +32,7 @@ python unpack_dataset
 ### Training
 
 ```
-torchrun train.py <config.yml>
+python ca_body/scripts/run_train.py <config.yml>
 ```
 
 ### Evaluation
@@ -42,7 +42,6 @@ TODO:
 ```
 python eval.py <config.yml>
 ```
-
 
 
 ### License

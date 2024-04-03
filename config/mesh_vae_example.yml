@@ -1,0 +1,175 @@
+
+# a dummy example
+data:
+  # root_path: /mnt/captures/oss/goliath/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody/
+  root_path: data_tmp/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody
+  shared_assets_path: data_tmp/shared/static_assets.pt
+  split: train
+  shuffle: True
+
+dataloader:
+  batch_size: 4
+  num_workers: 4
+
+model_name: mesh_vae
+
+model:
+  class_name: ca_body.models.${model_name}.AutoEncoder
+
+  encoder:
+    n_embs: 1024
+
+  encoder_face:
+    n_embs: 256
+
+  decoder:
+    init_uv_size: 64
+    n_init_channels: 64
+    n_min_channels: 4
+    n_pose_dims: 98
+    n_pose_enc_channels: 16
+    n_embs: 1024
+    n_embs_enc_channels: 32
+    n_face_embs: 256
+    uv_size: 1024
+
+  decoder_view:
+    net_uv_size: 1024
+
+  upscale_net:
+    n_ftrs: 4
+
+  shadow_net:
+    uv_size: 2048
+    shadow_size: 256
+    n_dims: 4
+
+  # pose_to_shadow:
+  #   n_pose_dims: 104
+  #   uv_size: 2048
+
+  renderer:
+    image_height: 2048
+    image_width: 1334
+    depth_disc_ksize: 3
+
+  cal:
+    identity_camera: 400870
+
+  pixel_cal:
+    image_height: 2048
+    image_width: 1334
+    ds_rate: 8
+
+  learn_blur: true
+
+summary:
+  class_name: ca_body.models.${model_name}.MeshVAESummary
+
+
+loss:
+  class_name: ca_body.loss.ModularLoss
+  losses:
+    rgb_l1:
+      src_key: rgb
+      tgt_key: image
+      mask_key: segmentation_fgbg
+      mask_erode: 7
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000
+        init_value: 1.0
+        target_value: 10.0
+    effnet:
+      src_key: rgb
+      tgt_key: image
+      mask_key: segmentation_fgbg
+      mask_erode: 7
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000
+        init_value: 1.0
+        target_value: 10.0
+    mask_l1:
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000
+        init_value: 100.0
+        target_value: 50.0
+      src_key: alpha
+      tgt_key: segmentation_fgbg
+    geom_l2:
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000
+        init_value: 1.0
+        target_value: 1.0e-05
+    geom_lap:
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000        
+        init_value: 100.0
+        target_value: 50.0
+    head_geom_l2:
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000        
+        init_value: 0.001
+        target_value: 1.0e-05
+    head_lap:
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000                
+        init_value: 100.0
+        target_value: 10.0
+    # mouth_eyes_lap_penalty: 0.0001
+    learn_blur: 0.001
+    kl: 0.001
+    face_kl: 0.001
+
+
+lr: 1.0e-4
+optimizer:
+  class_name: torch.optim.Adam
+  per_module:
+    encoder:
+      lr: ${lr}
+    encoder_face:
+      lr: ${lr}
+    # pose_to_shadow:
+    #   lr: ${lr}
+    decoder:
+      lr: ${lr}
+    decoder_view:
+      lr: ${lr}
+    shadow_net:
+      lr: ${lr}
+    upscale_net:
+      lr: ${lr}
+    cal:
+      lr: ${lr}
+    pixel_cal:
+      lr: 0.001
+    learn_blur:
+      lr: 0.001
+
+train:
+  tag: ${model_name}
+  run_dir: runs/${.tag}
+  tb_dir: ${.run_dir}/tb
+  ckpt_dir: ${.run_dir}/checkpoints
+
+  # CHANGE ME
+  n_max_iters: 10000
+  log_every_n_steps: 5
+  summary_every_n_steps: 10
+  ckpt_every_n_steps: 1000
+
+  
