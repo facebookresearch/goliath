@@ -18,6 +18,7 @@ import torch
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
 from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data.dataloader import default_collate
 from torchvision.transforms.functional import pil_to_tensor
 from tqdm import tqdm
 
@@ -34,6 +35,8 @@ class CaptureType(Enum):
 
 Polygon = namedtuple("Polygon", ["vertices", "faces"])
 
+logger = logging.getLogger(__name__)
+
 
 def get_capture_type(capture_name: str) -> CaptureType:
     if "Head" in capture_name:
@@ -48,12 +51,20 @@ def get_capture_type(capture_name: str) -> CaptureType:
 
 
 class BodyDataset(IterableDataset):
-    def __init__(self, root_path: Path, split: str, fully_lit_only: bool):
+    def __init__(
+        self,
+        root_path: Path,
+        shared_assets_path: Path,
+        split: str,
+        fully_lit_only: bool,
+        shuffle: bool,
+    ):
         if split not in ["train", "test"]:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
         self.root_path: Path = Path(root_path)
         self.split: str = split
         self.fully_lit_only: bool = fully_lit_only
+        self.shuffle: bool = shuffle
 
         self.capture_type: CaptureType = get_capture_type(self.root_path.name)
         self._get_fn: Callable = {
@@ -63,32 +74,59 @@ class BodyDataset(IterableDataset):
         }.get(self.capture_type)
         assert self._get_fn is not None
 
+    @lru_cache(maxsize=1)
+    def load_shared_assets(self) -> Dict[str, Any]:
+        return torch.load(self.shared_assets_path)
+
     def asset_exists(self, frame: int) -> bool:
         if self.capture_type in [CaptureType.HEAD, CaptureType.HAND]:
             # Assets only exist for fully lit frames
-            return frame in self.get_frame_set(fully_lit_only=True)
+            return frame in self.get_frame_list(fully_lit_only=True)
         return True
 
     @lru_cache(maxsize=1)
     def get_camera_calibration(self) -> Dict[str, Any]:
         with open(self.root_path / "camera_calibration.json", "r") as f:
-            return json.load(f)
+            camera_calibration = json.load(f)["KRT"]
+        return {str(c["cameraId"]): c for c in camera_calibration}
 
     @lru_cache(maxsize=1)
-    def get_camera_list(self) -> List[int]:
-        return [int(j["cameraId"]) for j in self.get_camera_calibration()["KRT"]]
+    def get_camera_parameters(self, camera: str, ds: int = 2) -> Dict[str, Any]:
+        krt = self.get_camera_calibration()[camera]
+
+        K = np.array(krt["K"], dtype=np.float32).T
+        K[:2, :2] /= ds
+        K[:2, 2] = (K[:2, 2] + 0.5) / ds - 0.5
+
+        Rt = np.array(krt["T"], dtype=np.float32).T[:3, :4]
+        R, t = Rt[:3, :3], Rt[:3, 3]
+        focal = np.array(K[:2, :2], dtype=np.float32)
+        princpt = np.array(K[:2, 2], dtype=np.float32)
+
+        return {
+            "Rt": Rt,
+            "K": K,
+            "campos": R.T.dot(-t),
+            "camrot": R,
+            "focal": focal,
+            "princpt": princpt,
+        }
+
+    @lru_cache(maxsize=1)
+    def get_camera_list(self) -> List[str]:
+        return list(self.get_camera_calibration().keys())
 
     @lru_cache(maxsize=2)
-    def get_frame_set(self, fully_lit_only: bool = False) -> Set[int]:
+    def get_frame_list(self, fully_lit_only: bool = False) -> List[int]:
         df = pd.read_csv(self.root_path / f"frame_splits_list.csv")
         frame_list = df[df.split == self.split].frame.tolist()
 
         if not fully_lit_only or self.capture_type is CaptureType.BODY:
             # All frames in Body captures are fully lit
-            return set(frame_list)
+            return list(frame_list)
 
         fully_lit = {frame for frame, index in self.load_light_pattern() if index == 0}
-        return {f for f in fully_lit if f in frame_list}
+        return [f for f in fully_lit if f in frame_list]
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_3d_keypoints(self, frame: int) -> Optional[Dict[str, Any]]:
@@ -101,56 +139,34 @@ class BodyDataset(IterableDataset):
             with zipf.open(f"{frame:06d}.json", "r") as json_file:
                 return json.load(json_file)
 
-        # kpts_path = self.root_path / "keypoints_3d" / f"{frame:06d}.json"
-        # with open(kpts_path, "r") as f:
-        #     content = json.loads(f.read())
-        # return content
-
-    def load_segmentation_parts(self, frame: int, camera: int) -> Image.Image:
+    def load_segmentation_parts(
+        self, frame: int, camera: str
+    ) -> Optional[torch.Tensor]:
         if not self.asset_exists(frame):
             # Asset only exists for fully lit frames
             return None
 
-        zip_path = self.root_path / "segmentation_parts" / f"cam{camera:06d}.zip"
+        zip_path = self.root_path / "segmentation_parts" / f"cam{camera}.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
-            with zipf.open(f"cam{camera:06d}/{frame:06d}.png", "r") as png_file:
-                return Image.open(BytesIO(png_file.read()))
+            with zipf.open(f"cam{camera}/{frame:06d}.png", "r") as png_file:
+                return pil_to_tensor(Image.open(BytesIO(png_file.read())))
 
-        # png_path = (
-        #     self.root_path
-        #     / "segmentation_parts"
-        #     / f"cam{camera:06d}"
-        #     / f"{frame:06d}.png"
-        # )
-        # return Image.open(png_path)
-
-    def load_segmentation_fgbg(self, frame: int, camera: int) -> Image.Image:
+    def load_segmentation_fgbg(self, frame: int, camera: str) -> Optional[torch.Tensor]:
         if not self.asset_exists(frame):
             # Asset only exists for fully lit frames
             return None
 
-        zip_path = self.root_path / "segmentation_fgbg" / f"cam{camera:06d}.zip"
+        zip_path = self.root_path / "segmentation_fgbg" / f"cam{camera}.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
-            with zipf.open(f"cam{camera:06d}/{frame:06d}.png", "r") as png_file:
-                return Image.open(BytesIO(png_file.read()))
+            with zipf.open(f"cam{camera}/{frame:06d}.png", "r") as png_file:
+                return pil_to_tensor(Image.open(BytesIO(png_file.read())))
 
-        # png_path = (
-        #     self.root_path
-        #     / "segmentation_fgbg"
-        #     / f"cam{camera:06d}"
-        #     / f"{frame:06d}.png"
-        # )
-        # return Image.open(png_path)
-
-    def load_image(self, frame: int, camera: int) -> Image:
-        zip_path = self.root_path / "image" / f"cam{camera:06d}.zip"
+    def load_image(self, frame: int, camera: str) -> Image:
+        zip_path = self.root_path / "image" / f"cam{camera}.zip"
 
         with zipfile.ZipFile(zip_path, "r") as zipf:
-            with zipf.open(f"cam{camera:06d}/{frame:06d}.avif", "r") as avif_file:
-                return Image.open(BytesIO(avif_file.read()))
-
-        # avif_path = self.root_path / "image" / f"cam{camera:06d}" / f"{frame:06d}.avif"
-        # return Image.open(avif_path)
+            with zipf.open(f"cam{camera}/{frame:06d}.avif", "r") as avif_file:
+                return pil_to_tensor(Image.open(BytesIO(avif_file.read())))
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_registration_vertices(self, frame: int) -> Optional[Polygon]:
@@ -164,17 +180,6 @@ class BodyDataset(IterableDataset):
                 # No faces are included
                 vertices, _ = load_ply(BytesIO(ply_file.read()))
                 return Polygon(vertices=vertices, faces=None)
-
-        # verts_path = (
-        #     self.root_path
-        #     / "kinematic_tracking"
-        #     / "registration_vertices"
-        #     / f"{frame:06d}.ply"
-        # )
-        # with open(verts_path, "rb") as f:
-        #     # No faces are included
-        #     vertices, _ = load_ply(f)
-        # return vertices
 
     @lru_cache(maxsize=1)
     def load_registration_vertices_mean(self) -> np.ndarray:
@@ -200,12 +205,9 @@ class BodyDataset(IterableDataset):
         zip_path = self.root_path / "kinematic_tracking" / "pose.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"pose/{frame:06d}.txt", "r") as f:
-                return np.array([float(i) for i in f.read().splitlines()])
-
-        # pose_path = self.root_path / "kinematic_tracking" / "pose" / f"{frame:06d}.txt"
-        # with open(pose_path, "r") as f:
-        #     pose_arr = np.array([float(i) for i in f.read().splitlines()])
-        # return pose_arr
+                return np.array(
+                    [float(i) for i in f.read().splitlines()], dtype=np.float32
+                )
 
     @lru_cache(maxsize=1)
     def load_template_mesh(self) -> Polygon:
@@ -225,31 +227,27 @@ class BodyDataset(IterableDataset):
     def load_skeleton_scales(self) -> np.ndarray:
         scales_path = self.root_path / "kinematic_tracking" / "skeleton_scales.txt"
         with open(scales_path, "r") as f:
-            return np.array([float(i) for i in f.read().splitlines()])
+            return np.array([float(i) for i in f.read().splitlines()], dtype=np.float32)
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_ambient_occlusion(self, frame: int) -> Optional[Image.Image]:
+    def load_ambient_occlusion(self, frame: int) -> Optional[torch.Tensor]:
         if not self.asset_exists(frame):
             # Asset only exists for fully lit frames
             return None
         zip_path = self.root_path / "uv_image" / "ambient_occlusion.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"ambient_occlusion/{frame:06d}.png", "r") as png_file:
-                return Image.open(BytesIO(png_file.read()))
-        # png_path = (
-        #     self.root_path / "uv_image" / "ambient_occlusion" / f"{frame:06d}.png"
-        # )
-        # return Image.open(png_path)
+                return pil_to_tensor(Image.open(BytesIO(png_file.read())))
 
     @lru_cache(maxsize=1)
-    def load_ambient_occlusion_mean(self) -> Image.Image:
+    def load_ambient_occlusion_mean(self) -> torch.Tensor:
         png_path = self.root_path / "uv_image" / "ambient_occlusion_mean.png"
-        return Image.open(png_path)
+        return pil_to_tensor(Image.open(png_path))
 
     @lru_cache(maxsize=1)
-    def load_color_mean(self) -> Image.Image:
+    def load_color_mean(self) -> torch.Tensor:
         png_path = self.root_path / "uv_image" / "color_mean.png"
-        return Image.open(png_path)
+        return pil_to_tensor(Image.open(png_path))
 
     @lru_cache(maxsize=1)
     def load_color_variance(self) -> float:
@@ -258,7 +256,7 @@ class BodyDataset(IterableDataset):
             return float(f.read())
 
     @lru_cache(maxsize=1)
-    def load_color(self, frame: int) -> Optional[Image.Image]:
+    def load_color(self, frame: int) -> Optional[torch.Tensor]:
         if not self.asset_exists(frame):
             # Asset only exists for fully lit frames
             return None
@@ -266,10 +264,7 @@ class BodyDataset(IterableDataset):
         zip_path = self.root_path / "uv_image" / "color.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
             with zipf.open(f"color/{frame:06d}.png", "r") as png_file:
-                return Image.open(BytesIO(png_file.read()))
-
-        # color_png_path = self.root_path / "uv_image" / "color" / f"{frame:06d}.png"
-        # return Image.open(color_png_path)
+                return pil_to_tensor(Image.open(BytesIO(png_file.read())))
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_scan_mesh(self, frame: int) -> Optional[Polygon]:
@@ -283,11 +278,6 @@ class BodyDataset(IterableDataset):
                 vertices, faces = load_ply(BytesIO(ply_file.read()))
                 return Polygon(vertices=vertices, faces=faces)
 
-        # ply_path = self.root_path / "scan_mesh" / f"{frame:06d}.ply"
-        # with open(ply_path, "rb") as f:
-        #     vertices, faces = load_ply(f)
-        # return vertices, faces
-
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_head_pose(self, frame: int) -> np.ndarray:
         zip_path = self.root_path / "head_pose" / "head_pose.zip"
@@ -297,22 +287,12 @@ class BodyDataset(IterableDataset):
                 rows = [line.split(" ") for line in lines]
                 return np.array([[float(i) for i in row] for row in rows])
 
-        # pose_path = self.root_path / "head_pose" / f"{frame:06d}.txt"
-        # with open(pose_path, "r") as f:
-        #     pose_arr = np.array([float(i) for i in f.read().splitlines()])
-        # return pose_arr
-
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_background(self, camera: int) -> Image.Image:
+    def load_background(self, camera: str) -> torch.Tensor:
         zip_path = self.root_path / "per_view_background" / "per_view_background.zip"
         with zipfile.ZipFile(zip_path, "r") as zipf:
-            with zipf.open(f"{camera:05d}.png", "r") as png_file:
-                return Image.open(BytesIO(png_file.read()))
-
-        # background_png_path = (
-        #     self.root_path / "per_view_background" / f"{camera:06d}.png"
-        # )
-        # return Image.open(background_png_path)
+            with zipf.open(f"{camera}.png", "r") as png_file:
+                return pil_to_tensor(Image.open(BytesIO(png_file.read())))
 
     @lru_cache(maxsize=1)
     def load_light_pattern(self) -> List[Tuple[int]]:
@@ -326,7 +306,24 @@ class BodyDataset(IterableDataset):
         with open(light_pattern_path, "r") as f:
             return json.load(f)
 
-    def _get_for_body(self, frame: int, camera: int) -> Dict[str, Any]:
+    @property
+    def static_assets(self) -> Dict[str, Any]:
+        shared_assets = self.load_shared_assets()
+        template_mesh = self.load_template_mesh()
+        skeleton_scales = self.load_skeleton_scales()
+        ambient_occlusion_mean = self.load_ambient_occlusion_mean()
+        color_mean = self.load_color_mean()
+        krt = self.get_camera_calibration()
+        return {
+            **shared_assets,
+            "camera_ids": list(krt.keys()),
+            "template_mesh": template_mesh,
+            "skeleton_scales": skeleton_scales,
+            "ambient_occlusion_mean": ambient_occlusion_mean / 255.0,
+            "color_mean": color_mean,
+        }
+
+    def _get_for_body(self, frame: int, camera: str) -> Dict[str, Any]:
         template_mesh = self.load_template_mesh()
         skeleton_scales = self.load_skeleton_scales()
         ambient_occlusion = self.load_ambient_occlusion(frame)
@@ -342,21 +339,21 @@ class BodyDataset(IterableDataset):
         row = {
             "camera_id": camera,
             "frame_id": frame,
-            "image": pil_to_tensor(image),
+            "image": image,
             "keypoints_3d": kpts,
             "registration_vertices": registration_vertices,
-            "segmentation_parts": pil_to_tensor(segmentation_parts),
+            "segmentation_parts": segmentation_parts,
             "pose": pose,
             "template_mesh": template_mesh,
             "skeleton_scales": skeleton_scales,
-            "ambient_occlusion_mean": pil_to_tensor(ambient_occlusion_mean),
-            "color_mean": pil_to_tensor(color_mean),
+            "ambient_occlusion_mean": ambient_occlusion_mean,
+            "color_mean": color_mean,
             "scan_mesh": scan_mesh,
         }
         return row
 
-    def _get_for_head(self, frame: int, camera: int) -> Dict[str, Any]:
-        is_fully_lit_frame: bool = frame in self.get_frame_set(fully_lit_only=True)
+    def _get_for_head(self, frame: int, camera: str) -> Dict[str, Any]:
+        is_fully_lit_frame: bool = frame in self.get_frame_list(fully_lit_only=True)
         head_pose = self.load_head_pose(frame)
         image = self.load_image(frame, camera)
         kpts = self.load_3d_keypoints(frame)
@@ -393,15 +390,10 @@ class BodyDataset(IterableDataset):
             "scan_mesh": scan_mesh,
             "background": background,
         }
-        for key in row:
-            if row[key] is None:
-                row[key] = torch.zeros(1)
-            if isinstance(row[key], Image.Image):
-                row[key] = pil_to_tensor(row[key])
         return row
 
-    def _get_for_hand(self, frame: int, camera: int) -> Dict[str, Any]:
-        is_fully_lit_frame: bool = frame in self.get_frame_set(fully_lit_only=True)
+    def _get_for_hand(self, frame: int, camera: str) -> Dict[str, Any]:
+        is_fully_lit_frame: bool = frame in self.get_frame_list(fully_lit_only=True)
         image = self.load_image(frame, camera)
         kpts = self.load_3d_keypoints(frame)
         skeleton_scales = self.load_skeleton_scales()
@@ -436,39 +428,60 @@ class BodyDataset(IterableDataset):
             "ambient_occlusion_mean": ambient_occlusion_mean,
             "scan_mesh": scan_mesh,
         }
-        for key in row:
-            if row[key] is None:
-                row[key] = torch.zeros(1)
-            if isinstance(row[key], Image.Image):
-                row[key] = pil_to_tensor(row[key])
         return row
 
+    def get(self, frame: int, camera: str) -> Dict[str, Any]:
+        return self._get_fn(frame, camera)
+
     def __iter__(self):
-        for frame in self.get_frame_set(self.fully_lit_only):
-            for camera in self.get_camera_list():
-                # yield self._get_fn(frame, camera)
+        frame_list = self.get_frame_list()
+        camera_list = self.get_camera_list()
+
+        # NOTE: not a real shuffle, just a random
+        if self.shuffle:
+            np.random.shuffle(frame_list)
+            np.random.shuffle(camera_list)
+
+        for frame in frame_list:
+            for camera in camera_list:
                 try:
-                    yield self._get_fn(frame, camera)
+                    yield self.get(frame, camera)
                 except Exception as e:
-                    logging.error(f"Error loading frame {frame} camera {camera}: {e}")
-                    continue
+                    logger.warning(
+                        f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping. Error: {e}"
+                    )
 
     def __len__(self):
-        return len(self.get_frame_set(self.fully_lit_only)) * len(
+        return len(self.get_frame_list(self.fully_lit_only)) * len(
             self.get_camera_list()
         )
 
 
-if __name__ == "__main__":
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
+def worker_init_fn(worker_id: int):
+    worker_seed = (torch.initial_seed() + worker_id) % 2**32
+    np.random.seed(worker_seed)
 
+
+def collate_fn(items):
+    """Modified form of `torch.utils.data.dataloader.default_collate`
+    that will strip samples from the batch if they are ``None``."""
+    items = [item for item in items if item is not None]
+    return default_collate(items) if len(items) > 0 else None
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=Path, help="Root path to capture data")
     parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
     args = parser.parse_args()
 
-    dataset = BodyDataset(root_path=args.input, split=args.split, fully_lit_only=False)
+    dataset = BodyDataset(
+        root_path=args.input,
+        split=args.split,
+        shared_assets_path=None,
+        shuffle=False,
+        fully_lit_only=False,
+    )
     # dataloader = DataLoader(
     #     dataset,
     #     batch_size=1,
