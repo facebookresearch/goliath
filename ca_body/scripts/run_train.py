@@ -65,6 +65,7 @@ def main(config: DictConfig):
     )
 
     train_writer = SummaryWriter(log_dir=config.train.tb_dir)
+    summary_fn = load_from_config(config.summary)
 
     train(
         model,
@@ -72,9 +73,11 @@ def main(config: DictConfig):
         optimizer,
         train_loader,
         config,
+        summary_fn=summary_fn,
         train_writer=train_writer,
         saving_enabled=True,
         logging_enabled=True,
+        summary_enabled=True,
     )
 
 

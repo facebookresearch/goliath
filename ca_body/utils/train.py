@@ -10,7 +10,7 @@ import glob
 import copy
 import typing
 import inspect
-from typing import Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
+from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
 
 import torch.nn as nn
 
@@ -23,6 +23,8 @@ from torch.optim.lr_scheduler import LRScheduler
 
 from ca_body.utils.torchutils import to_device
 from ca_body.utils.module_loader import load_class, build_optimizer
+
+from torchvision.utils import make_grid
 
 import logging
 
@@ -114,13 +116,6 @@ def filter_inputs(
     }
 
 
-def save_file_summaries(path: str, summaries: Dict[str, Tuple[str, Any]]):
-    """Saving regular summaries for monitoring purposes."""
-    for name, (value, ext) in summaries.items():
-        # save(f'{path}/{name}.{ext}', value)
-        raise NotImplementedError()
-
-
 def load_checkpoint(
     ckpt_path: str,
     modules: Dict[str, Any],
@@ -164,8 +159,10 @@ def train(
     config: Mapping[str, Any],
     lr_scheduler: Optional[LRScheduler] = None,
     train_writer: Optional[SummaryWriter] = None,
+    summary_fn: Optional[Callable] = None,
     saving_enabled: bool = True,
     logging_enabled: bool = True,
+    summary_enabled: bool = True,
     iteration: int = 0,
     device: Optional[Union[th.device, str]] = "cuda:0",
 ) -> None:
@@ -201,12 +198,22 @@ def train(
 
         if (
             logging_enabled
-            and train_writer
+            and train_writer is not None
             and iteration % config.train.log_every_n_steps == 0
         ):
             for name, value in _loss_dict.items():
                 train_writer.add_scalar(f"Losses/{name}", value, global_step=iteration)
             train_writer.flush()
+
+        if (
+            summary_enabled
+            and summary_fn is not None
+            and train_writer is not None
+            and iteration % config.train.summary_every_n_steps == 0
+        ):
+            summaries = summary_fn(preds, batch)
+            for name, value in summaries.items():
+                train_writer.add_image(f"Images/{name}", value, global_step=iteration)
 
         if (
             saving_enabled

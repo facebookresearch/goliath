@@ -337,11 +337,10 @@ class BodyDataset(IterableDataset):
         kpts = self.load_3d_keypoints(frame)
         registration_vertices = self.load_registration_vertices(frame)
         pose = self.load_pose(frame)
-        scan_mesh = self.load_scan_mesh(frame)
         image = self.load_image(frame, camera)
         segmentation_parts = self.load_segmentation_parts(frame, camera)
         segmentation_parts = pil_to_tensor(self.load_segmentation_parts(frame, camera))
-        segmentation_fg = (segmentation_parts != 0.0).to(th.float32)
+        segmentation_fgbg = (segmentation_parts != 0.0).to(torch.float32)
         camera_parameters = self.get_camera_parameters(camera)
         row = {
             "camera_id": camera,
@@ -356,9 +355,9 @@ class BodyDataset(IterableDataset):
             "skeleton_scales": skeleton_scales,
             "ambient_occlusion_mean": ambient_occlusion_mean,
             "color_mean": color_mean,
-            "segmentation_fg": segmentation_fg,
+            "segmentation_fgbg": segmentation_fgbg,
             "pose": pose,
-            "scan_mesh": scan_mesh,
+            # "scan_mesh": scan_mesh,
             **camera_parameters,
         }
         return row
@@ -480,18 +479,6 @@ class BodyDataset(IterableDataset):
 
 def worker_init_fn(worker_id: int):
     worker_seed = (torch.initial_seed() + worker_id) % 2**32
-    np.random.seed(worker_seed)
-
-
-def collate_fn(items):
-    """Modified form of `torch.utils.data.dataloader.default_collate`
-    that will strip samples from the batch if they are ``None``."""
-    items = [item for item in items if item is not None]
-    return default_collate(items) if len(items) > 0 else None
-
-
-def worker_init_fn(worker_id: int):
-    worker_seed = th.initial_seed() % 2**32
     np.random.seed(worker_seed)
 
 

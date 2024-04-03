@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import copy
@@ -38,7 +38,9 @@ def gaussian_kernel(ksize: int, std: Optional[float] = None) -> np.ndarray:
     if std is None:
         std = np.sqrt(-(radius**2) / (2 * np.log(0.05)))
 
-    x, y = np.meshgrid(np.linspace(-radius, radius, ksize), np.linspace(-radius, radius, ksize))
+    x, y = np.meshgrid(
+        np.linspace(-radius, radius, ksize), np.linspace(-radius, radius, ksize)
+    )
     xy = np.stack([x, y], axis=2)
     gk = np.exp(-(xy**2).sum(-1) / (2 * std**2))
     gk /= gk.sum()
@@ -70,7 +72,9 @@ def check_args_shadowing(name, method: object, arg_names) -> None:
     init_args = {*spec.args, *spec.kwonlyargs}
     for arg_name in arg_names:
         if arg_name in init_args:
-            raise TypeError(f"{name} attempted to shadow a wrapped argument: {arg_name}")
+            raise TypeError(
+                f"{name} attempted to shadow a wrapped argument: {arg_name}"
+            )
 
 
 # For backward compatibility.
@@ -155,7 +159,9 @@ def weight_norm_wrapper(
     """
 
     class Wrap(cls):
-        def __init__(self, *args: Any, name=name, g_dim=g_dim, v_dim=v_dim, **kwargs: Any):
+        def __init__(
+            self, *args: Any, name=name, g_dim=g_dim, v_dim=v_dim, **kwargs: Any
+        ):
             # Check if the extra arguments are overwriting arguments for the wrapped class
             check_args_shadowing(
                 "weight_norm_wrapper", super().__init__, ["name", "g_dim", "v_dim"]
@@ -254,14 +260,20 @@ class Conv2dUB(th.nn.Conv2d):
         """Conv2d with untied bias."""
         super().__init__(in_channels, out_channels, *args, bias=False, **kwargs)
         # pyre-fixme[4]: Attribute must be annotated.
-        self.bias = th.nn.Parameter(th.zeros(out_channels, height, width)) if bias else None
+        self.bias = (
+            th.nn.Parameter(th.zeros(out_channels, height, width)) if bias else None
+        )
 
     # TODO: remove this method once upgraded to pytorch 1.8
     # pyre-fixme[3]: Return type must be annotated.
-    def _conv_forward(self, input: th.Tensor, weight: th.Tensor, bias: Optional[th.Tensor]):
+    def _conv_forward(
+        self, input: th.Tensor, weight: th.Tensor, bias: Optional[th.Tensor]
+    ):
         # Copied from pt1.8 source code.
         if self.padding_mode != "zeros":
-            input = thf.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode)
+            input = thf.pad(
+                input, self._reversed_padding_repeated_twice, mode=self.padding_mode
+            )
             return thf.conv2d(
                 input, weight, bias, self.stride, _pair(0), self.dilation, self.groups
             )
@@ -304,12 +316,18 @@ class ConvTranspose2dUB(th.nn.ConvTranspose2d):
         super().__init__(in_channels, out_channels, *args, bias=False, **kwargs)
 
         if self.padding_mode != "zeros":
-            raise ValueError("Only `zeros` padding mode is supported for ConvTranspose2dUB")
+            raise ValueError(
+                "Only `zeros` padding mode is supported for ConvTranspose2dUB"
+            )
 
         # pyre-fixme[4]: Attribute must be annotated.
-        self.bias = th.nn.Parameter(th.zeros(out_channels, height, width)) if bias else None
+        self.bias = (
+            th.nn.Parameter(th.zeros(out_channels, height, width)) if bias else None
+        )
 
-    def forward(self, input: th.Tensor, output_size: Optional[List[int]] = None) -> th.Tensor:
+    def forward(
+        self, input: th.Tensor, output_size: Optional[List[int]] = None
+    ) -> th.Tensor:
         # TODO(T111390117): Fix Conv member annotations.
         output_padding = self._output_padding(
             input=input,
@@ -388,7 +406,8 @@ class ConvTranspose2dUB(th.nn.ConvTranspose2d):
                 dim_size = (
                     (input.size(d + num_non_spatial_dims) - 1) * stride[d]
                     - 2 * padding[d]
-                    + (dilation[d] if dilation is not None else 1) * (kernel_size[d] - 1)
+                    + (dilation[d] if dilation is not None else 1)
+                    * (kernel_size[d] - 1)
                     + 1
                 )
                 min_sizes.append(dim_size)
@@ -473,10 +492,17 @@ def interpolate_wrapper(cls: Type[th.nn.Module], new_cls_name: str):
 
     class Wrap(cls):
         def __init__(
-            self, *args: Any, size=None, scale_factor=None, mode="bilinear", **kwargs: Any
+            self,
+            *args: Any,
+            size=None,
+            scale_factor=None,
+            mode="bilinear",
+            **kwargs: Any,
         ):
             check_args_shadowing(
-                "interpolate_wrapper", super().__init__, ["size", "scale_factor", "mode"]
+                "interpolate_wrapper",
+                super().__init__,
+                ["size", "scale_factor", "mode"],
             )
             super().__init__(*args, **kwargs)
             self.register_forward_pre_hook(
@@ -613,9 +639,13 @@ class LinearELR(th.nn.Module):
     ) -> None:
         super(LinearELR, self).__init__()
         self.in_features = in_features
-        self.weight = th.nn.Parameter(th.zeros(out_features, in_features, dtype=th.float32))
+        self.weight = th.nn.Parameter(
+            th.zeros(out_features, in_features, dtype=th.float32)
+        )
         if bias:
-            self.bias: th.nn.Parameter = th.nn.Parameter(th.zeros(out_features, dtype=th.float32))
+            self.bias: th.nn.Parameter = th.nn.Parameter(
+                th.zeros(out_features, dtype=th.float32)
+            )
         else:
             self.register_parameter("bias", None)
         self.std: float = 0.0
@@ -691,11 +721,21 @@ class Conv2dELR(th.nn.Module):
         self.fuse_box_filter = fuse_box_filter
         if transpose:
             self.weight: th.nn.Parameter = th.nn.Parameter(
-                th.zeros(in_channels, out_channels // groups, *self.kernel_size, dtype=th.float32)
+                th.zeros(
+                    in_channels,
+                    out_channels // groups,
+                    *self.kernel_size,
+                    dtype=th.float32,
+                )
             )
         else:
             self.weight: th.nn.Parameter = th.nn.Parameter(
-                th.zeros(out_channels, in_channels // groups, *self.kernel_size, dtype=th.float32)
+                th.zeros(
+                    out_channels,
+                    in_channels // groups,
+                    *self.kernel_size,
+                    dtype=th.float32,
+                )
             )
         if bias:
             if untied:
@@ -725,7 +765,12 @@ class Conv2dELR(th.nn.Module):
             w = self.weight
             if self.fuse_box_filter:
                 w = thf.pad(w, (1, 1, 1, 1), mode="constant")
-                w = w[:, :, 1:, 1:] + w[:, :, :-1, 1:] + w[:, :, 1:, :-1] + w[:, :, :-1, :-1]
+                w = (
+                    w[:, :, 1:, 1:]
+                    + w[:, :, :-1, 1:]
+                    + w[:, :, 1:, :-1]
+                    + w[:, :, :-1, :-1]
+                )
             bias = self.bias
             if bias is not None:
                 bias = bias * self.bias_lr_mul
@@ -747,7 +792,10 @@ class Conv2dELR(th.nn.Module):
             if self.fuse_box_filter:
                 w = thf.pad(w, (1, 1, 1, 1), mode="constant")
                 w = (
-                    w[:, :, 1:, 1:] + w[:, :, :-1, 1:] + w[:, :, 1:, :-1] + w[:, :, :-1, :-1]
+                    w[:, :, 1:, 1:]
+                    + w[:, :, :-1, 1:]
+                    + w[:, :, 1:, :-1]
+                    + w[:, :, :-1, :-1]
                 ) * 0.25
             bias = self.bias
             if bias is not None:
@@ -823,7 +871,9 @@ class ConcatPyramid(th.nn.Module):
             self.levels = len(branch)
 
         kernel = th.from_numpy(gaussian_kernel(ksize, kstd)).float()
-        self.register_buffer("blur_kernel", kernel[None, None].expand(n_concat_in, -1, -1, -1))
+        self.register_buffer(
+            "blur_kernel", kernel[None, None].expand(n_concat_in, -1, -1, -1)
+        )
 
     # pyre-fixme[3]: Return type must be annotated.
     # pyre-fixme[2]: Parameter must be annotated.
@@ -838,7 +888,10 @@ class ConcatPyramid(th.nn.Module):
 
         for _ in range(self.levels - 1):
             blurred = thf.conv2d(
-                pyramid[0], self.blur_kernel, groups=self.n_concat_in, padding=self.ksize // 2
+                pyramid[0],
+                self.blur_kernel,
+                groups=self.n_concat_in,
+                padding=self.ksize // 2,
             )
             pyramid.insert(0, blurred[:, :, ::2, ::2])
 
@@ -871,7 +924,9 @@ def get_pad_layer(pad_type):
 class Downsample(th.nn.Module):
     # pyre-fixme[3]: Return type must be annotated.
     # pyre-fixme[2]: Parameter must be annotated.
-    def __init__(self, pad_type="reflect", filt_size=3, stride=2, channels=None, pad_off=0):
+    def __init__(
+        self, pad_type="reflect", filt_size=3, stride=2, channels=None, pad_off=0
+    ):
         super(Downsample, self).__init__()
         # pyre-fixme[4]: Attribute must be annotated.
         self.filt_size = filt_size
@@ -913,7 +968,9 @@ class Downsample(th.nn.Module):
 
         filt = th.Tensor(a[:, None] * a[None, :])
         filt = filt / th.sum(filt)
-        self.register_buffer("filt", filt[None, None, :, :].repeat((self.channels, 1, 1, 1)))
+        self.register_buffer(
+            "filt", filt[None, None, :, :].repeat((self.channels, 1, 1, 1))
+        )
 
         # pyre-fixme[4]: Attribute must be annotated.
         self.pad = get_pad_layer(pad_type)(self.pad_sizes)

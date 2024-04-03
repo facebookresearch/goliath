@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import logging
-from typing import Dict, Optional, Tuple, Any, List
+from typing import Callable, Dict, Optional, Tuple, Any, List
 
 import numpy as np
 import torch as th
@@ -14,7 +14,6 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 from torchvision.transforms.functional import gaussian_blur
 
-from drtk import edge_grad_estimator
 import ca_body.nn.layers as la
 
 from ca_body.nn.blocks import (
@@ -38,7 +37,9 @@ from ca_body.nn.unet import UNetWB
 from ca_body.nn.color_cal import CalV5
 
 from ca_body.utils.image import linear2displayBatch
-from ca_body.utils.lbs import LBSModule
+
+# from ca_body.utils.lbs import LBSModule
+from care.models.body.lbs import LBSModule
 from ca_body.utils.seams import SeamSampler
 
 # from ca_body.utils.render_pytorch3d import RenderLayer
@@ -200,30 +201,6 @@ class AutoEncoder(nn.Module):
                 flip_uvs=False,
             )
 
-    @th.jit.unused
-    def compute_summaries(self, preds, batch):
-        # TODO: switch to common summaries?
-        # return compute_summaries_mesh(preds, batch)
-        rgb = linear2displayBatch(preds["rgb"][:, :3])
-        rgb_gt = linear2displayBatch(batch["image"])
-        depth = preds["depth"][:, np.newaxis]
-        mask = depth > 0.0
-        normals = (
-            255 * (1.0 - depth2normals(depth, batch["focal"], batch["princpt"])) / 2.0
-        ) * mask
-        grid_rgb = make_grid(rgb, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        grid_rgb_gt = (
-            make_grid(rgb_gt, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        )
-        grid_normals = (
-            make_grid(normals, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        )
-
-        progress_image = th.cat([grid_rgb, grid_rgb_gt, grid_normals], dim=0)
-        return {
-            "progress_image": (progress_image, "png"),
-        }
-
     def forward_tex(self, tex_mean_rec, tex_view_rec, shadow_map):
         x = th.cat([tex_mean_rec, tex_view_rec], dim=1)
         tex_rec = tex_mean_rec + tex_view_rec
@@ -345,7 +322,10 @@ class AutoEncoder(nn.Module):
             depth_disc_mask = depth_discontuity_mask(render_depth)
 
             preds.update(
-                rgb=render_rgb, alpha=render_alpha, depth_disc_mask=depth_disc_mask
+                rgb=render_rgb,
+                alpha=render_alpha,
+                depth_disc_mask=depth_disc_mask,
+                depth=render_depth,
             )
 
         if not th.jit.is_scripting() and self.learn_blur_enabled:
@@ -405,9 +385,6 @@ class Encoder(nn.Module):
         self.apply(lambda m: la.glorot(m, 0.2))
         la.glorot(self.mu, 1.0)
         la.glorot(self.logvar, 1.0)
-        # # self.apply(weights_initializer(0.2))
-        # self.mu.apply(weights_initializer(1.0))
-        # self.logvar.apply(weights_initializer(1.0))
 
     def forward(self, verts_unposed_uv: th.Tensor) -> Dict[str, th.Tensor]:
         preds = {}
@@ -475,10 +452,15 @@ class ConvDecoder(nn.Module):
         n_init_channels,
         n_min_channels,
         assets,
+        tex_scale: float = 0.001,
+        verts_scale: float = 0.01,
     ):
         super().__init__()
 
         self.geo_fn = geo_fn
+
+        self.tex_scale = tex_scale
+        self.verts_scale = verts_scale
 
         self.uv_size = uv_size
         self.init_uv_size = init_uv_size
@@ -566,12 +548,12 @@ class ConvDecoder(nn.Module):
         )
 
         self.apply(lambda x: la.glorot(x, 0.2))
+
         la.glorot(self.verts_conv, 1.0)
         la.glorot(self.tex_conv, 1.0)
 
-        # self.apply(weights_initializer(0.2))
-        # self.verts_conv.apply(weights_initializer(1.0))
-        # self.tex_conv.apply(weights_initializer(1.0))
+        self.verts_scale = verts_scale
+        self.tex_scale = tex_scale
 
         self.seam_sampler = seam_sampler
 
@@ -632,10 +614,10 @@ class ConvDecoder(nn.Module):
 
         verts_features, tex_features = th.split(x, self.n_channels[-1], 1)
 
-        verts_uv_delta_rec = self.verts_conv(verts_features)
+        verts_uv_delta_rec = self.verts_conv(verts_features) * self.verts_scale
         # TODO: need to get values
-        verts_delta_rec = self.geo_fn.from_uv(verts_uv_delta_rec) * 0.01
-        tex_mean_rec = self.tex_conv(tex_features) * 0.01
+        verts_delta_rec = self.geo_fn.from_uv(verts_uv_delta_rec)
+        tex_mean_rec = self.tex_conv(tex_features) * self.tex_scale
 
         preds = {
             "geom_delta_rec": verts_delta_rec,
@@ -686,10 +668,38 @@ class UpscaleNet(nn.Module):
         )
 
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor=upscale_factor)
-        self.apply(weights_initializer(0.2))
-        self.out_block.apply(weights_initializer(1.0))
+
+        self.apply(lambda m: la.glorot(m, 0.2))
+        la.glorot(self.out_block, 1.0)
 
     def forward(self, x):
         x = self.conv_block(x)
         x = self.out_block(x)
         return self.pixel_shuffle(x)
+
+
+class MeshVAESummary(Callable):
+
+    def __call__(
+        self, preds: Dict[str, Any], batch: Dict[str, Any]
+    ) -> Dict[str, th.Tensor]:
+
+        rgb = linear2displayBatch(preds["rgb"][:, :3])
+        rgb_gt = linear2displayBatch(batch["image"])
+        depth = preds["depth"]
+
+        mask = depth > 0.0
+        normals = (
+            255 * (1.0 - depth2normals(depth, batch["focal"], batch["princpt"])) / 2.0
+        ) * mask
+        grid_rgb = make_grid(rgb, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        grid_rgb_gt = (
+            make_grid(rgb_gt, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        )
+        grid_normals = (
+            make_grid(normals, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        )
+        progress_image = th.cat([grid_rgb, grid_rgb_gt, grid_normals], dim=0)
+        return {
+            "progress_image": progress_image.permute(2, 0, 1),
+        }
