@@ -60,8 +60,8 @@ class BodyDataset(IterableDataset):
         root_path: Path,
         shared_assets_path: Path,
         split: str,
-        fully_lit_only: bool,
-        shuffle: bool,
+        fully_lit_only: bool = True,
+        shuffle: bool = True,
     ):
         if split not in ["train", "test"]:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
@@ -174,7 +174,7 @@ class BodyDataset(IterableDataset):
                 return pil_to_tensor(Image.open(BytesIO(avif_file.read())))
 
     @lru_cache(maxsize=CACHE_LENGTH)
-    def load_registration_vertices(self, frame: int) -> Optional[Polygon]:
+    def load_registration_vertices(self, frame: int) -> Optional[torch.Tensor]:
         if not self.asset_exists(frame):
             # Asset only exists for fully lit frames
             return None
@@ -184,7 +184,7 @@ class BodyDataset(IterableDataset):
             with zipf.open(f"registration_vertices/{frame:06d}.ply", "r") as ply_file:
                 # No faces are included
                 vertices, _ = load_ply(BytesIO(ply_file.read()))
-                return Polygon(vertices=vertices, faces=None)
+                return vertices  # Polygon(vertices=vertices, faces=None)
 
     @lru_cache(maxsize=1)
     def load_registration_vertices_mean(self) -> np.ndarray:
@@ -339,7 +339,6 @@ class BodyDataset(IterableDataset):
         pose = self.load_pose(frame)
         image = self.load_image(frame, camera)
         segmentation_parts = self.load_segmentation_parts(frame, camera)
-        segmentation_parts = pil_to_tensor(self.load_segmentation_parts(frame, camera))
         segmentation_fgbg = (segmentation_parts != 0.0).to(torch.float32)
         camera_parameters = self.get_camera_parameters(camera)
         row = {
@@ -347,7 +346,7 @@ class BodyDataset(IterableDataset):
             "frame_id": frame,
             "image": image,
             "keypoints_3d": kpts,
-            "ambient_occlusion": pil_to_tensor(ambient_occlusion) / 255.0,
+            "ambient_occlusion": ambient_occlusion / 255.0,
             "registration_vertices": registration_vertices,
             "segmentation_parts": segmentation_parts,
             "pose": pose,
