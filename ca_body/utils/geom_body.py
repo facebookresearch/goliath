@@ -91,6 +91,7 @@ def compute_v2uv(
     v2uv_dict = {}
     for i_v, i_uv in zip(vi.reshape(-1), vti.reshape(-1)):
         v2uv_dict.setdefault(i_v, set()).add(i_uv)
+
     assert len(v2uv_dict) == n_verts
     v2uv = np.zeros((n_verts, n_max), dtype=np.int32)
     for i in range(n_verts):

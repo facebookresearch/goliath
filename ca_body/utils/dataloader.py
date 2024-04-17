@@ -10,17 +10,22 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
+import cv2
 import numpy as np
-
 
 import pandas as pd
 import pillow_avif
 import torch
+import torch.nn.functional as F
 from PIL import Image
+from scipy.ndimage.morphology import binary_dilation
 from pytorch3d.io import load_ply, save_ply
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.dataloader import default_collate
 from torchvision.transforms.functional import pil_to_tensor
+
+from ca_body.utils.obj import load_obj
+
 from tqdm import tqdm
 
 # There are a lot of frame-wise assets. Avoid re-fetching those when we
@@ -61,7 +66,7 @@ class BodyDataset(IterableDataset):
         shared_assets_path: Path,
         split: str,
         fully_lit_only: bool = True,
-        shuffle: bool = True,
+        shuffle: bool = True
     ):
         if split not in ["train", "test"]:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
@@ -78,6 +83,12 @@ class BodyDataset(IterableDataset):
             CaptureType.HAND: self._get_for_hand,
         }.get(self.capture_type)
         assert self._get_fn is not None
+        
+        self._static_get_fn: Callable = {
+            CaptureType.BODY: self._static_get_for_body,
+            CaptureType.HEAD: self._static_get_for_head,
+            CaptureType.HAND: self._static_get_for_hand,
+        }.get(self.capture_type)      
 
     @lru_cache(maxsize=1)
     def load_shared_assets(self) -> Dict[str, Any]:
@@ -85,8 +96,7 @@ class BodyDataset(IterableDataset):
 
     def asset_exists(self, frame: int) -> bool:
         if self.capture_type in [CaptureType.HEAD, CaptureType.HAND]:
-            # Assets only exist for fully lit frames
-            return frame in self.get_frame_list(fully_lit_only=True)
+            return frame in self.get_frame_list(fully_lit_only=self.fully_lit_only)
         return True
 
     @lru_cache(maxsize=1)
@@ -290,7 +300,7 @@ class BodyDataset(IterableDataset):
             with zipf.open(f"{frame:06d}.txt", "r") as txt_file:
                 lines = txt_file.read().decode("utf-8").splitlines()
                 rows = [line.split(" ") for line in lines]
-                return np.array([[float(i) for i in row] for row in rows])
+                return np.array([[float(i) for i in row] for row in rows], dtype=np.float32)
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_background(self, camera: str) -> torch.Tensor:
@@ -310,17 +320,110 @@ class BodyDataset(IterableDataset):
         light_pattern_path = self.root_path / "lights" / "light_pattern_metadata.json"
         with open(light_pattern_path, "r") as f:
             return json.load(f)
+        
+    @property
+    def batch_filter(self) -> Callable:
+        return {
+            CaptureType.BODY: self._batch_filter_for_body,
+            CaptureType.HEAD: self._batch_filter_for_head,
+            CaptureType.HAND: self._batch_filter_for_hand,
+        }.get(self.capture_type)  
+    
+    def _batch_filter_for_body(self, batch):
+        pass
+    
+    def _batch_filter_for_head(self, batch):
+        batch["image"] = batch["image"].float()
+        batch["background"] = batch["background"].float()
+
+        # black level subtraction
+        batch["image"][:, 0] -= 2
+        batch["image"][:, 1] -= 1
+        batch["image"][:, 2] -= 2
+        
+        batch["background"][:, 0] -= 2
+        batch["background"][:, 1] -= 1
+        batch["background"][:, 2] -= 2
+
+        # white balance
+        batch["image"][:, 0] *= 1.4
+        batch["image"][:, 1] *= 1.1
+        batch["image"][:, 2] *= 1.6
+
+        batch["background"][:, 0] *= 1.4
+        batch["background"][:, 1] *= 1.1
+        batch["background"][:, 2] *= 1.6
+        
+        batch["image"] = (batch["image"] / 255.0).clamp(0, 1)        
+        batch["background"] = (batch["background"] / 255.0).clamp(0, 1)
+        
+    def _batch_filter_for_hand(self, batch):
+        batch["image"] = batch["image"].float()
+        batch["image"][:, 0] -= 2
+        batch["image"][:, 1] -= 1
+        batch["image"][:, 2] -= 2
+        batch["image"][:, 0] *= 1.4
+        batch["image"][:, 1] *= 1.1
+        batch["image"][:, 2] *= 1.6
+        batch["image"] = (batch["image"] / 255.0).clamp(0, 1)        
+
+        batch["background"] = batch["background"].float()
+        batch["background"][:, 0] -= 2
+        batch["background"][:, 1] -= 1
+        batch["background"][:, 2] -= 2
+        batch["background"][:, 0] *= 1.4
+        batch["background"][:, 1] *= 1.1
+        batch["background"][:, 2] *= 1.6
+        batch["background"] = (batch["background"] / 255.0).clamp(0, 1)
 
     @property
     def static_assets(self) -> Dict[str, Any]:
-        shared_assets = self.load_shared_assets()
+        assets = self._static_get_fn()
+        shared_assets = self.load_shared_assets()        
+        return {
+            **shared_assets,
+            **assets,
+        }
+    
+    def _static_get_for_body(self) -> Dict[str, Any]:
         template_mesh = self.load_template_mesh()
         skeleton_scales = self.load_skeleton_scales()
         ambient_occlusion_mean = self.load_ambient_occlusion_mean()
         color_mean = self.load_color_mean()
         krt = self.get_camera_calibration()
         return {
-            **shared_assets,
+            "camera_ids": list(krt.keys()),
+            "template_mesh": template_mesh,
+            "skeleton_scales": skeleton_scales,
+            "ambient_occlusion_mean": ambient_occlusion_mean / 255.0,
+            "color_mean": color_mean,
+        }
+
+    def _static_get_for_head(self) -> Dict[str, Any]:
+        reg_verts_mean = self.load_registration_vertices_mean()
+        reg_verts_var = self.load_registration_vertices_variance()
+        light_pattern = self.load_light_pattern()
+        light_pattern_meta = self.load_light_pattern_meta()
+        color_mean = self.load_color_mean()
+        color_var = self.load_color_variance()
+        krt = self.get_camera_calibration()
+        return {
+            "camera_ids": list(krt.keys()),
+            "verts_mean": reg_verts_mean,
+            "verts_var": reg_verts_var,
+            "color_mean": color_mean,
+            "color_var": color_var,
+            "light_pattern": light_pattern,
+            "light_pattern_meta": light_pattern_meta,
+        }
+
+    def _static_get_for_hand(self) -> Dict[str, Any]:
+        template_mesh = self.load_template_mesh()
+        skeleton_scales = self.load_skeleton_scales()
+        ambient_occlusion_mean = self.load_ambient_occlusion_mean()
+        color_mean = self.load_color_mean()
+        krt = self.get_camera_calibration()
+        return {
             "camera_ids": list(krt.keys()),
             "template_mesh": template_mesh,
             "skeleton_scales": skeleton_scales,
@@ -365,19 +468,36 @@ class BodyDataset(IterableDataset):
         is_fully_lit_frame: bool = frame in self.get_frame_list(fully_lit_only=True)
         head_pose = self.load_head_pose(frame)
         image = self.load_image(frame, camera)
-        kpts = self.load_3d_keypoints(frame)
+        
+        # kpts = self.load_3d_keypoints(frame)
         reg_verts = self.load_registration_vertices(frame)
-        reg_verts_mean = self.load_registration_vertices_mean()
-        reg_verts_var = self.load_registration_vertices_variance()
-        template_mesh = self.load_template_mesh()
+        # reg_verts_mean = self.load_registration_vertices_mean()
+        # reg_verts_var = self.load_registration_vertices_variance()
+        # template_mesh = self.load_template_mesh()
+        
+        # TODO: precompute some of them
         light_pattern = self.load_light_pattern()
+        light_pattern = {f[0]: f[1] for f in light_pattern}
         light_pattern_meta = self.load_light_pattern_meta()
-        segmentation_parts = self.load_segmentation_parts(frame, camera)
-        color_mean = self.load_color_mean()
-        color_var = self.load_color_variance()
+        light_pos_all = torch.FloatTensor(light_pattern_meta["light_positions"])
+        n_lights_all = light_pos_all.shape[0]
+        lightinfo = torch.IntTensor(light_pattern_meta["light_patterns"][light_pattern[frame]]["light_index_durations"])
+        n_lights = lightinfo.shape[0]
+        light_pos = light_pos_all[lightinfo[:, 0]]
+        light_intensity = lightinfo[:, 1:].float() / 5555.0        
+        light_pos = F.pad(light_pos, (0, 0, 0, n_lights_all - n_lights), "constant", 0)
+        light_intensity = F.pad(light_intensity, (0, 0, 0, n_lights_all - n_lights), "constant", 0)
+        
+        # segmentation_parts = self.load_segmentation_parts(frame, camera)
+        # color_mean = self.load_color_mean()
+        # color_var = self.load_color_variance()
         color = self.load_color(frame)
-        scan_mesh = self.load_scan_mesh(frame)
-        background = self.load_background(camera)
+        # scan_mesh = self.load_scan_mesh(frame)
+        background = self.load_background(camera)[:3]
+        if image.size() != background.size():
+            background = F.interpolate(background[None], size=(image.shape[1], image.shape[2]), mode='bilinear')[0]
+
+        camera_parameters = self.get_camera_parameters(camera)
 
         row = {
             "camera_id": camera,
@@ -385,19 +505,23 @@ class BodyDataset(IterableDataset):
             "is_fully_lit_frame": is_fully_lit_frame,
             "head_pose": head_pose,
             "image": image,
-            "keypoints_3d": kpts,
             "registration_vertices": reg_verts,
-            "registration_vertices_mean": reg_verts_mean,
-            "registration_vertices_variance": reg_verts_var,
-            "template_mesh": template_mesh,
-            "light_pattern": light_pattern,
-            "light_pattern_meta": light_pattern_meta,
-            "segmentation_parts": segmentation_parts,
-            "color_mean": color_mean,
-            "color_variance": color_var,
+            "light_pos": light_pos,
+            "light_intensity": light_intensity,
+            "n_lights": n_lights,
             "color": color,
-            "scan_mesh": scan_mesh,
             "background": background,
+            # "keypoints_3d": kpts,
+            # "registration_vertices_mean": reg_verts_mean,
+            # "registration_vertices_variance": reg_verts_var,
+            # "template_mesh": template_mesh,
+            # "light_pattern": light_pattern,
+            # "light_pattern_meta": light_pattern_meta,
+            # "segmentation_parts": segmentation_parts,
+            # "color_mean": color_mean,
+            # "color_variance": color_var,
+            # "scan_mesh": scan_mesh,
+            **camera_parameters,
         }
         return row
 
@@ -440,10 +564,18 @@ class BodyDataset(IterableDataset):
         return row
 
     def get(self, frame: int, camera: str) -> Dict[str, Any]:
-        return self._get_fn(frame, camera)
+        sample = self._get_fn(frame, camera)
+        missing_assets= [k for k, v in sample.items() if v is None]
+        if len(missing_assets) != 0:
+            logger.warning(
+                f"sample was missing these assets: {missing_assets} with idx frame_id=`{frame}`, camera_id=`{camera}` {sample['n_lights']}"
+            )
+            return None
+        else:
+            return sample
 
     def __iter__(self):
-        frame_list = self.get_frame_list()
+        frame_list = self.get_frame_list(fully_lit_only=self.fully_lit_only)
         camera_list = self.get_camera_list()
 
         # NOTE: not a real shuffle, just a random

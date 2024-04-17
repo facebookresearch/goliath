@@ -3,6 +3,7 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+import numpy as np
 import torch as th
 import os
 import re
@@ -11,11 +12,9 @@ import copy
 import typing
 import inspect
 from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
-
 import torch.nn as nn
 
-
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import OmegaConf, DictConfig
 
@@ -133,14 +132,9 @@ def load_checkpoint(
     # adding
     if os.path.isdir(ckpt_path):
         if iteration is None:
-            # lookup latest iteration
-            iteration = max(
-                [
-                    int(os.path.splitext(os.path.basename(p))[0])
-                    for p in glob.glob(os.path.join(ckpt_path, "*.pt"))
-                ]
-            )
-        ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
+            ckpt_path = os.path.join(ckpt_path, "latest.pt")
+        else:
+            ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
     logger.info(f"loading checkpoint {ckpt_path}")
     ckpt_dict = th.load(ckpt_path, map_location=map_location)
     for name, mod in modules.items():
@@ -160,6 +154,7 @@ def train(
     lr_scheduler: Optional[LRScheduler] = None,
     train_writer: Optional[SummaryWriter] = None,
     summary_fn: Optional[Callable] = None,
+    batch_filter_fn: Optional[Callable] = None,
     saving_enabled: bool = True,
     logging_enabled: bool = True,
     summary_enabled: bool = True,
@@ -167,19 +162,48 @@ def train(
     device: Optional[Union[th.device, str]] = "cuda:0",
 ) -> None:
 
+    # Loss history for explosion checking.
+    loss_history = deque(maxlen=32)
+    loss_history.append(np.inf)
     for batch in train_data:
         if batch is None:
             logger.info("skipping empty batch")
             continue
         batch = to_device(batch, device)
         batch["iteration"] = iteration
-
+        
+        if batch_filter_fn is not None:
+            batch_filter_fn(batch)
+        
         # leaving only inputs acutally used by the model
         preds = model(**filter_inputs(batch, model, required_only=False))
 
         # TODO: switch to the old-school loss computation
         loss, loss_dict = loss_fn(preds, batch, iteration=iteration)
         assert not th.isnan(loss), "loss is NaN"
+
+        avg_loss = loss.detach().clone()
+        # TODO: put it back for DDP support
+        # th.distributed.all_reduce(avg_loss)
+        # avg_loss /= th.distributed.get_world_size()
+        avg_loss = avg_loss.item()
+
+        prev_loss = sum(loss_history) / len(loss_history)
+        exploded = (
+            avg_loss > 100 * prev_loss or np.isnan(avg_loss) or np.isinf(avg_loss)
+        )
+        if exploded:
+            logger.info(f"explosion detected: iter={iteration}: frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")
+        else:
+            loss_history.append(avg_loss)
+
+        if exploded:
+            load_checkpoint(
+                config.train.ckpt_dir, modules={"model": model, "optimizer": optimizer}
+            )
+            loss_history.clear()
+            loss_history.append(np.inf)
+            continue
 
         if th.isnan(loss):
             _loss_dict = process_losses(loss_dict)

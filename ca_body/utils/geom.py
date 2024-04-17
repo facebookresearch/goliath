@@ -210,10 +210,13 @@ class GeometryModule(nn.Module):
         self.register_buffer("vi", th.as_tensor(vi))
         self.register_buffer("vt", th.as_tensor(vt))
         self.register_buffer("vti", th.as_tensor(vti))
-        self.register_buffer("v2uv", th.as_tensor(v2uv, dtype=th.int64))
+        
+        # NOTE: seems irrelevant for head        
+        if v2uv is not None:
+            self.register_buffer("v2uv", th.as_tensor(v2uv, dtype=th.int64))
 
-        # TODO: should we just pass topology here?
-        self.n_verts = v2uv.shape[0]
+            # TODO: should we just pass topology here?
+            self.n_verts = v2uv.shape[0]
 
         self.uv_size = uv_size
 
@@ -259,7 +262,7 @@ class GeometryModule(nn.Module):
         return index_image, face_image, bary_image
 
     def vn(self, verts):
-        return vert_normals(verts, self.vi[np.newaxis].to(th.long))
+        return vert_normals(verts, self.vi.to(th.long))
 
     def to_uv(self, values):
         return values_to_uv(values, self.index_image, self.bary_image)

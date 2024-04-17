@@ -38,8 +38,8 @@ from ca_body.nn.color_cal import CalV5
 
 from ca_body.utils.image import linear2displayBatch
 
-# from ca_body.utils.lbs import LBSModule
-from care.models.body.lbs import LBSModule
+from ca_body.utils.lbs import LBSModule
+# from care.models.body.lbs import LBSModule
 from ca_body.utils.seams import SeamSampler
 
 # from ca_body.utils.render_pytorch3d import RenderLayer

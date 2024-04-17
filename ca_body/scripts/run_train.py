@@ -20,7 +20,7 @@ from ca_body.utils.train import (
     train,
 )
 
-from ca_body.utils.dataloader import BodyDataset
+from ca_body.utils.dataloader import BodyDataset, collate_fn
 from torch.utils.data import DataLoader
 
 import logging
@@ -32,6 +32,7 @@ def main(config: DictConfig):
     device = th.device(f"cuda:0")
 
     train_dataset = BodyDataset(**config.data)
+    batch_filter_fn = train_dataset.batch_filter
 
     static_assets = AttrDict(train_dataset.static_assets)
 
@@ -61,6 +62,7 @@ def main(config: DictConfig):
 
     train_loader = DataLoader(
         train_dataset,
+        collate_fn=collate_fn,
         **config.dataloader,
     )
 
@@ -74,6 +76,7 @@ def main(config: DictConfig):
         train_loader,
         config,
         summary_fn=summary_fn,
+        batch_filter_fn=batch_filter_fn,
         train_writer=train_writer,
         saving_enabled=True,
         logging_enabled=True,
