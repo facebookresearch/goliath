@@ -222,7 +222,6 @@ def envmap_to_image(
 
 
 def envmap_to_mirrorball(w, h, env, camrot=None):
-    # NOTE: not sure why minus to x is needed
     py, px = th.meshgrid(th.linspace(-1.0, 1.0, h), th.linspace(-1.0, 1.0, w))
     pixelcoords = th.stack([px, py], -1)[None].expand(env.shape[0], -1, -1, -1).to(env.device)
     zsq = pixelcoords.pow(2).sum(-1, keepdim=True)
@@ -316,3 +315,25 @@ def prefilterEnvmapSG(
         acc += sample_color
         
     return acc / float(num_samples)
+
+def compose_envmap(render, alpha, envbg, K, Rt):
+    env_mirror = envmap_to_mirrorball(200, 200, envbg, Rt[:, :3, :3])
+    # to offset mugsy color correction
+    env_mirror[:, 0] = env_mirror[:, 0]
+    env_mirror[:, 2] = env_mirror[:, 2]
+    
+    mirror_img = th.zeros_like(render)
+    mirror_alpha = th.zeros_like(alpha)
+    mirror_alpha[:, :, -200:, -200:] = env_mirror[:, 3:]
+    mirror_img[:, :, -200:, -200:] = env_mirror[:, :3]
+    
+    envbg = envmap_to_image(
+        render.shape[-1], render.shape[-2], envbg, K[:, :2, 2], K, Rt[:, :3, :3]
+    )
+    # to offset mugsy color correction
+    envbg[:, 0] = envbg[:, 0]
+    envbg[:, 2] = envbg[:, 2]
+    render = render + (1.0 - alpha) * envbg.clamp(0, 1.0)
+    render = (1.0 - mirror_alpha) * render + mirror_alpha * mirror_img
+    
+    return render

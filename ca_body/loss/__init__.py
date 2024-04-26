@@ -6,6 +6,7 @@ from glob import glob
 
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from omegaconf import DictConfig
 
@@ -435,8 +436,8 @@ def pose_to_shadow_l2_loss(preds, batch=None):
 
 
 @register_loss_by_fn("bound_primscale")
-def loss_bound_primscale(preds, batch=None, min_scale=0.1, max_scale=20.0):
-    primscale = preds["primscale"]
+def loss_bound_primscale(preds, batch=None, key: str = "primscale_preclip", min_scale: float = 0.1, max_scale: float = 20.0):
+    primscale = preds[key]
     return th.where(
         primscale < min_scale,
         1.0 / primscale.clamp(1e-7, th.inf),
@@ -451,3 +452,12 @@ def loss_negcolor(preds, batch=None, key: str = "diff_color"):
 @register_loss_by_fn("l2_reg")
 def loss_l2_reg(preds, batch=None, key: str = "spec_nml"):
     return preds[key].pow(2).mean()
+
+@register_loss_by_fn("backlit_reg")
+def loss_backlight_reg(
+    preds,
+    batch=None,
+    key: str = "color_rand",
+    cos_key: str = "cos_weight",
+):
+    return (F.relu(-preds[cos_key]) * preds[key].clamp(min=0.0)).pow(2).mean()

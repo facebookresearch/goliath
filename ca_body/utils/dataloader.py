@@ -88,7 +88,9 @@ class BodyDataset(IterableDataset):
             CaptureType.BODY: self._static_get_for_body,
             CaptureType.HEAD: self._static_get_for_head,
             CaptureType.HAND: self._static_get_for_hand,
-        }.get(self.capture_type)      
+        }.get(self.capture_type)
+        
+        self.cameras = list(self.get_camera_calibration().keys())
 
     @lru_cache(maxsize=1)
     def load_shared_assets(self) -> Dict[str, Any]:
@@ -129,7 +131,7 @@ class BodyDataset(IterableDataset):
 
     @lru_cache(maxsize=1)
     def get_camera_list(self) -> List[str]:
-        return list(self.get_camera_calibration().keys())
+        return self.cameras
 
     @lru_cache(maxsize=2)
     def get_frame_list(self, fully_lit_only: bool = False) -> List[int]:

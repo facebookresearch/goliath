@@ -142,7 +142,7 @@ def load_checkpoint(
         if ignore_names is not None and name in ignore_names:
             logger.info(f"skipping: {ignore_names[name]}")
             params = filter_params(params, ignore_names[name])
-        mod.load_state_dict(params, strict=strict)
+        mod.load_state_dict(params)
 
 
 def train(
@@ -180,22 +180,15 @@ def train(
 
         # TODO: switch to the old-school loss computation
         loss, loss_dict = loss_fn(preds, batch, iteration=iteration)
-        assert not th.isnan(loss), "loss is NaN"
-
-        avg_loss = loss.detach().clone()
-        # TODO: put it back for DDP support
-        # th.distributed.all_reduce(avg_loss)
-        # avg_loss /= th.distributed.get_world_size()
-        avg_loss = avg_loss.item()
 
         prev_loss = sum(loss_history) / len(loss_history)
         exploded = (
-            avg_loss > 100 * prev_loss or np.isnan(avg_loss) or np.isinf(avg_loss)
+            loss.item() > 20 * prev_loss or th.isnan(loss) or th.isinf(loss)
         )
         if exploded:
             logger.info(f"explosion detected: iter={iteration}: frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")
         else:
-            loss_history.append(avg_loss)
+            loss_history.append(loss.item())
 
         if exploded:
             load_checkpoint(
@@ -205,14 +198,15 @@ def train(
             loss_history.append(np.inf)
             continue
 
-        if th.isnan(loss):
-            _loss_dict = process_losses(loss_dict)
-            loss_str = " ".join([f"{k}={v:.4f}" for k, v in _loss_dict.items()])
-            logger.info(f"iter={iteration}: {loss_str}")
-            raise ValueError("loss is NaN")
-
         optimizer.zero_grad()
         loss.backward()
+        
+        optim_params = [p for pg in optimizer.param_groups for p in pg["params"]]
+        for p in optim_params:
+            if hasattr(p, "grad") and p.grad is not None:
+                p.grad.data[th.isnan(p.grad.data)] = 0
+                p.grad.data[th.isinf(p.grad.data)] = 0
+        th.nn.utils.clip_grad_norm_(optim_params, 1.0)
         optimizer.step()
 
         if logging_enabled and iteration % config.train.log_every_n_steps == 0:

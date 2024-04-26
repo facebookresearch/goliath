@@ -34,7 +34,7 @@ from ca_body.nn.color_cal import CalV5
 from ca_body.utils.image import linear2srgb, scale_diff_image, make_image_grid_batched
 
 import ca_body.utils.sh as sh
-from ca_body.utils.envmap import dir2uv
+from ca_body.utils.envmap import dir2uv, compose_envmap
 
 from ca_body.utils.render_drtk import RenderLayer
 from ca_body.utils.render_gsplat import render as render_gs
@@ -46,6 +46,7 @@ from extensions.sgutils.sgutils import evaluate_gaussian
 
 logger = logging.getLogger(__name__)
 
+primscale_range: Tuple[float, float] = (0.1, 20.0)
 
 class AutoEncoder(nn.Module):
     def __init__(
@@ -109,17 +110,17 @@ class AutoEncoder(nn.Module):
             self.cal_enabled = True
             self.cal = CalV5(**cal, cameras=assets.camera_ids)
 
-        self.mesh_renderer = RenderLayer(
-            h=image_height,
-            w=image_width,
-            vt=self.geo_fn.vt,
-            vi=self.geo_fn.vi,
-            vti=self.geo_fn.vti,
-            flip_uvs=True
-        )
+        # self.mesh_renderer = RenderLayer(
+        #     h=image_height,
+        #     w=image_width,
+        #     vt=self.geo_fn.vt,
+        #     vi=self.geo_fn.vi,
+        #     vti=self.geo_fn.vti,
+        #     flip_uvs=True
+        # )
 
-        # TODO: add face_weight for assets
-        self.register_buffer("face_weight", assets.face_weight[None], persistent=False)
+        # # TODO: add face_weight for assets
+        # self.register_buffer("face_weight", assets.face_weight[None], persistent=False)
 
     def render(
         self,
@@ -167,44 +168,44 @@ class AutoEncoder(nn.Module):
         
         return rgb, alpha, depth
     
-    def _rasterize_facew(
-        self,
-        K: th.Tensor,
-        Rt: th.Tensor,
-        background: th.Tensor,
-        preds: Dict[str, Any]
-    ):
-        geom = preds["geom"]
-        tex = self.face_weight.expand(geom.shape[0], -1, -1, -1)
-        with th.no_grad():
-            vn = self.geo_fn.vn(geom)
-        vn = F.normalize(self.geo_fn.to_uv(vn), dim=1)
-        tex = th.cat([vn, tex[:, :1]], dim=1)
+    # def _rasterize_facew(
+    #     self,
+    #     K: th.Tensor,
+    #     Rt: th.Tensor,
+    #     background: th.Tensor,
+    #     preds: Dict[str, Any]
+    # ):
+    #     geom = preds["geom"]
+    #     tex = self.face_weight.expand(geom.shape[0], -1, -1, -1)
+    #     vn = self.geo_fn.vn(geom)
+    #     vn = F.normalize(self.geo_fn.to_uv(vn), dim=1)
+    #     tex = th.cat([vn, tex[:, :1]], dim=1)
 
-        renders = self.mesh_renderer(
-            preds["geom"],
-            tex=tex,
-            K=K,
-            Rt=Rt,
-        )
+    #     renders = self.mesh_renderer(
+    #         preds["geom"],
+    #         tex=tex,
+    #         K=K,
+    #         Rt=Rt,
+    #     )
         
-        nml_img = renders["render"][:, :3].permute(0, 2, 3, 1)
-        nml_img = (Rt[:, None, None, :3, :3] @ nml_img[..., None])[..., 0]
-        weight = (
-            renders["render"][:, 3:].expand(-1, 3, -1, -1) + self.bg_weight
-        ) / (1.0 + self.bg_weight)
-        # likely this is mistake but will keep it for consistency with the paper
-        weight = (
-            weight * renders["mask"] + self.bg_weight
-        ) / (1.0 + self.bg_weight)
+    #     nml_img = renders["render"][:, :3].permute(0, 2, 3, 1)
+    #     nml_img = (Rt[:, None, None, :3, :3] @ nml_img[..., None])[..., 0]
+    #     weight = (
+    #         renders["render"][:, 3:].expand(-1, 3, -1, -1) + self.bg_weight
+    #     ) / (1.0 + self.bg_weight)
+    #     # likely this is mistake but will keep it for consistency with the paper
+    #     weight = (
+    #         weight * renders["mask"] + self.bg_weight
+    #     ) / (1.0 + self.bg_weight)
         
-        non_backfacing = (nml_img.permute(0, 3, 1, 2)[:, 2:3].detach() <= 0).float()
-        weight = weight * non_backfacing
+    #     non_backfacing = (nml_img.permute(0, 3, 1, 2)[:, 2:3].detach() <= 0).float()
+    #     weight = weight * non_backfacing
         
-        bg_mask = (background[:, :3].mean(1, keepdim=True) > 0.5)
-        bg_mask = 1.0 - dilate(bg_mask, 81).float()
+    #     bg_mask = (background[:, :3].mean(1, keepdim=True) > 0.5)
+    #     bg_mask = 1.0 - dilate(bg_mask, 81).float()
 
-        return weight * bg_mask, nml_img.permute(0, 3, 1, 2)
+    #     # return bg_mask
+    #     return weight * bg_mask, nml_img.permute(0, 3, 1, 2)
 
 
     def forward(
@@ -223,6 +224,8 @@ class AutoEncoder(nn.Module):
         camera_id: Optional[List[str]] = None,
         frame_id: Optional[th.Tensor] = None,
         iteration: Optional[int] = None,
+        preconv_envmap: Optional[th.Tensor] = None,
+        lightrot: Optional[th.Tensor] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         B = head_pose.shape[0]
@@ -238,7 +241,8 @@ class AutoEncoder(nn.Module):
         headrel_light_dir = F.normalize(headrel_light_pos, p=2, dim=-1)
         sh_coeffs = sh.dir2sh_torch(self.n_diff_sh, headrel_light_dir)
         headrel_light_sh = (sh_coeffs[:, :, None] * light_intensity[..., None]).sum(dim=1)
-        
+        if lightrot is not None:
+            lightrot = lightrot @ head_pose[:, :3, :3]
         # encoding
         enc_preds = self.encoder(registration_vertices, color)
         embs = enc_preds["embs"]
@@ -247,7 +251,7 @@ class AutoEncoder(nn.Module):
         geom_preds = self.geomdecoder(embs)
         geom = geom_preds["face_geom"]
 
-        dec_preds = self.decoder(embs, geom, headrel_campos, light_intensity, headrel_light_pos, headrel_light_sh, n_lights)
+        dec_preds = self.decoder(embs, geom, headrel_campos, light_intensity, headrel_light_pos, headrel_light_sh, n_lights, preconv_envmap, lightrot)
         
         preds = {
             "geom": geom,
@@ -255,6 +259,7 @@ class AutoEncoder(nn.Module):
             **enc_preds,
             **dec_preds,
         }
+        
         # rendering
         rgb, alpha, depth = self.render(K, headrel_Rt, preds)
 
@@ -266,18 +271,34 @@ class AutoEncoder(nn.Module):
                 bg = background[:, :3].clone()
                 bg[th.logical_not(is_fully_lit_frame)] *= 0.0
                 rgb = rgb + (1.0 - alpha) * bg
+        
+        if preconv_envmap is not None and "envbg" in kwargs:
+            rgb = compose_envmap(rgb, alpha, kwargs["envbg"], K, Rt)
 
+            rgbs = [rgb]
+            
+            preds["color"] = preds["diff_color"].clamp(min=0.0)
+            rgb, alpha, depth = self.render(K, headrel_Rt, preds)
+            rgbs.append(rgb)
+            
+            preds["color"] = preds["spec_color"].clamp(min=0.0)
+            rgb, alpha, depth = self.render(K, headrel_Rt, preds)
+            rgbs.append(rgb)
+            
+            rgb = th.cat(rgbs, -1)
+        
         preds.update(
             rgb=rgb,
             alpha=alpha,
             depth=depth
         )
         
-        if self.training:
-            with th.no_grad():
-                weight, mesh_nml = self._rasterize_facew(K, headrel_Rt, background, preds)
-            preds["image_weight"] = weight
-            preds["mesh_nml"] = mesh_nml
+        # if self.training:
+        #     with th.no_grad():
+        #         weight, mesh_nml = self._rasterize_facew(K, headrel_Rt, background, preds)
+        #         # weight = self._rasterize_facew(K, headrel_Rt, background, preds)
+        #     preds["image_weight"] = weight
+        #     preds["mesh_nml"] = mesh_nml
         
         if not th.jit.is_scripting() and self.learn_blur_enabled:
             preds["rgb"] = self.learn_blur(preds["rgb"], camera_id)
@@ -482,16 +503,15 @@ class PrimDecoder(nn.Module):
         
         # compute positional map on uv
         # TODO: check if we need this
-        with th.no_grad():
-            postex = self.geo_fn.to_uv(geom)
+        postex = self.geo_fn.to_uv(geom)
         primposbase = postex.permute(0, 2, 3, 1).view(B, -1, 3)
         
         # compute normal map on uv
         # TODO: check if we need this
-        with th.no_grad():
-            vn = self.geo_fn.vn(geom)
-        vn = F.normalize(self.geo_fn.to_uv(vn), dim=1)
-        vn = vn.permute(0, 2, 3, 1).view(B, -1, 3)
+        vn = self.geo_fn.vn(geom)
+        tn = self.geo_fn.to_uv(vn)
+        tn = F.normalize(tn, dim=1)
+        primnmlbase = tn.permute(0, 2, 3, 1).reshape(B, -1, 3)
                 
         # run view-independent decoder
         embs = self.encmod(embs).view(-1, 256, 8, 8)
@@ -528,7 +548,7 @@ class PrimDecoder(nn.Module):
         
         # view-dependent specular normal
         spec_dnml = f_vcond[..., 1:]
-        spec_nml = F.normalize(spec_dnml + vn,  dim=-1)
+        spec_nml = F.normalize(spec_dnml + primnmlbase,  dim=-1)
         
         # albedo
         albedo = self.albedo.expand(B, -1, -1)
@@ -563,14 +583,15 @@ class PrimDecoder(nn.Module):
                 w_type=0
             ) * spec_vis
 
-        color = diff_color + spec_color
+        color = diff_color.clamp(min=0.0) + spec_color
         
         preds.update(
             color=color.clamp(min=0.0),
             opacity=opacity,
             primpos=primpos,
             primqvec=primqvec,
-            primscale=primscale,
+            primscale=primscale.clamp(*primscale_range),
+            primscale_preclip=primscale,
             sigma=sigma,
             spec_vis=spec_vis,
             spec_nml=spec_nml,
@@ -578,6 +599,36 @@ class PrimDecoder(nn.Module):
             diff_color=diff_color,
             spec_color=spec_color
         )
+        
+        if self.training:
+            with th.no_grad():
+                # Choose a random light direction
+                light_dir = th.rand(
+                    B, 1, 3, device=headrel_light_pos.device, dtype=headrel_light_pos.dtype
+                ) - 0.5
+                light_dir = F.normalize(light_dir, p=2, dim=-1)  # [1, 1, 3]
+                cos_weight = (light_dir * primnmlbase).sum(
+                    dim=-1, keepdims=True
+                )  # [B, n_prims, 1]
+                light_sh = sh.dir2sh_torch(self.diff_sh_degree, light_dir)
+            
+            light_intensity = th.ones_like(light_intensity[:, :1])
+            n_lights = th.ones_like(n_lights)
+            headrel_light_pos = 10000.0 * light_dir
+            spec_color_rand = evaluate_gaussian(
+                ref_dirs.contiguous(),
+                sigma.contiguous(),
+                light_intensity.contiguous(),
+                headrel_light_pos.contiguous(),
+                primpos.contiguous(),
+                n_lights.int(),
+                w_type=0
+            ) * spec_vis    
+
+            diff_color_rand = (diff_shs * light_sh[:, None]).sum(dim=-1)
+    
+            preds["cos_weight"] = cos_weight
+            preds["color_rand"] = diff_color_rand.clamp(min=0.0) + spec_color_rand
         
         return preds
     

@@ -327,8 +327,7 @@ def face_normals(v, vi, eps: float = 1e-5):
     v1 = pts[:, :, 2] - pts[:, :, 0]
     n = th.cross(v0, v1, dim=-1)
     norm = th.norm(n, dim=-1, keepdim=True)
-    norm[norm < eps] = 1
-    n /= norm
+    n = n / norm.clamp(min=eps)
     return n
 
 
@@ -340,8 +339,7 @@ def vert_normals(v, vi, eps: float = 1.0e-5):
     for j in range(3):
         vnorms[..., j].scatter_add_(1, vi_flat, fnorms[..., j])
     norm = th.norm(vnorms, dim=-1, keepdim=True)
-    norm[norm < eps] = 1
-    vnorms /= norm
+    vnorms = vnorms / norm.clamp(min=eps)
     return vnorms
 
 
