@@ -12,7 +12,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ca_body.loss.registry import (  # noqa
+from ca_code.loss.registry import (  # noqa
     get_loss,
     logger,
     loss_registry,  # noqa
@@ -20,11 +20,11 @@ from ca_body.loss.registry import (  # noqa
     register_loss_by_fn,  # noqa
 )
 
-from ca_body.loss import perceptual
+from ca_code.loss import perceptual
 
-from ca_body.utils.image import erode
-from ca_body.utils.module_loader import load_from_config, load_module
-from ca_body.utils.ssim import ssim
+from ca_code.utils.image import erode
+from ca_code.utils.module_loader import load_from_config, load_module
+from ca_code.utils.ssim import ssim
 from omegaconf import DictConfig
 
 

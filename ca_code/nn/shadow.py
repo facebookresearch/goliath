@@ -1,21 +1,20 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import logging
 
-from typing import Optional, Dict
+from typing import Dict, Optional
 
+# TODO: use shared utils here?
+import ca_code.nn.layers as la
 
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-
-# TODO: use shared utils here?
-import ca_body.nn.layers as la
-from ca_body.nn.blocks import tile2d, weights_initializer
+from ca_code.nn.blocks import tile2d, weights_initializer
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +167,9 @@ class ShadowUNet(nn.Module):
         for i, layer in enumerate(self.dec_layers):
             if i > 0:
                 x_prev = enc_acts[-i - 1]
-                x = F.interpolate(x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True)
+                x = F.interpolate(
+                    x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True
+                )
                 x = th.cat([x, x_prev], dim=1)
             x = layer(x)
 
@@ -196,11 +197,21 @@ class FloorShadowDecoder(nn.Module):
         super().__init__()
 
         # TODO: can we reduce # dims here?
-        self.down1 = nn.Sequential(la.Conv2dWNUB(1, 64, 256, 256, 4, 2, 1), nn.LeakyReLU(0.2))
-        self.down2 = nn.Sequential(la.Conv2dWNUB(64, 64, 128, 128, 4, 2, 1), nn.LeakyReLU(0.2))
-        self.down3 = nn.Sequential(la.Conv2dWNUB(64, 128, 64, 64, 4, 2, 1), nn.LeakyReLU(0.2))
-        self.down4 = nn.Sequential(la.Conv2dWNUB(128, 256, 32, 32, 4, 2, 1), nn.LeakyReLU(0.2))
-        self.down5 = nn.Sequential(la.Conv2dWNUB(256, 512, 16, 16, 4, 2, 1), nn.LeakyReLU(0.2))
+        self.down1 = nn.Sequential(
+            la.Conv2dWNUB(1, 64, 256, 256, 4, 2, 1), nn.LeakyReLU(0.2)
+        )
+        self.down2 = nn.Sequential(
+            la.Conv2dWNUB(64, 64, 128, 128, 4, 2, 1), nn.LeakyReLU(0.2)
+        )
+        self.down3 = nn.Sequential(
+            la.Conv2dWNUB(64, 128, 64, 64, 4, 2, 1), nn.LeakyReLU(0.2)
+        )
+        self.down4 = nn.Sequential(
+            la.Conv2dWNUB(128, 256, 32, 32, 4, 2, 1), nn.LeakyReLU(0.2)
+        )
+        self.down5 = nn.Sequential(
+            la.Conv2dWNUB(256, 512, 16, 16, 4, 2, 1), nn.LeakyReLU(0.2)
+        )
         self.up1 = nn.Sequential(
             la.ConvTranspose2dWNUB(512, 256, 32, 32, 4, 2, 1), nn.LeakyReLU(0.2)
         )
@@ -402,7 +413,9 @@ class ShadowUNet_PoseCond(nn.Module):
         for i, layer in enumerate(self.dec_layers):
             if i > 0:
                 x_prev = enc_acts[-i - 1]
-                x = F.interpolate(x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True)
+                x = F.interpolate(
+                    x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True
+                )
                 x = th.cat([x, x_prev], dim=1)
             x = layer(x)
 
@@ -571,7 +584,9 @@ class DistMapShadowUNet(nn.Module):
     def forward(self, dist_map: th.Tensor) -> Dict[str, th.Tensor]:
         # resizing the inputs if necessary
         if dist_map.shape[-2:] != (self.shadow_size, self.shadow_size):
-            dist_map = F.interpolate(dist_map, size=(self.shadow_size, self.shadow_size))
+            dist_map = F.interpolate(
+                dist_map, size=(self.shadow_size, self.shadow_size)
+            )
 
         x = dist_map
 
@@ -595,7 +610,9 @@ class DistMapShadowUNet(nn.Module):
         for i, layer in enumerate(self.dec_layers):
             if i > 0:
                 x_prev = enc_acts[-i - 1]
-                x = F.interpolate(x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True)
+                x = F.interpolate(
+                    x, size=x_prev.shape[2:4], mode="bilinear", align_corners=True
+                )
                 x = th.cat([x, x_prev], dim=1)
             x = layer(x)
 

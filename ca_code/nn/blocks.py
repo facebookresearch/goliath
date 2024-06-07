@@ -1,19 +1,19 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
 import logging
 from turtle import forward
 
-import ca_body.nn.layers as la
-from ca_body.nn.layers import weight_norm_wrapper
+import ca_code.nn.layers as la
 
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from ca_code.nn.layers import weight_norm_wrapper
 
 
 logger = logging.getLogger(__name__)
@@ -49,10 +49,12 @@ def WeightNorm(x, dim=0):
 
 # pyre-ignore
 def np_warp_bias(uv_size):
-    xgrid, ygrid = np.meshgrid(np.linspace(-1.0, 1.0, uv_size), np.linspace(-1.0, 1.0, uv_size))
-    grid = np.concatenate((xgrid[None, :, :], ygrid[None, :, :]), axis=0)[None, ...].astype(
-        np.float32
+    xgrid, ygrid = np.meshgrid(
+        np.linspace(-1.0, 1.0, uv_size), np.linspace(-1.0, 1.0, uv_size)
     )
+    grid = np.concatenate((xgrid[None, :, :], ygrid[None, :, :]), axis=0)[
+        None, ...
+    ].astype(np.float32)
     return grid
 
 
@@ -240,8 +242,12 @@ class ConvBlock(nn.Module):
     ):
         super().__init__()
 
-        Conv2dWNUB = weight_norm_wrapper(la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None)
-        Conv2dWN = weight_norm_wrapper(th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None)
+        Conv2dWNUB = weight_norm_wrapper(
+            la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None
+        )
+        Conv2dWN = weight_norm_wrapper(
+            th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None
+        )
 
         # TODO: do we really need this?
         self.conv_resize = Conv2dWN(in_channels, out_channels, kernel_size=1)
@@ -319,7 +325,9 @@ class ConvBlockNoSkip(nn.Module):
 
 
 class ConvDownBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, size, lrelu_slope=0.2, groups=1, wnorm_dim=0):
+    def __init__(
+        self, in_channels, out_channels, size, lrelu_slope=0.2, groups=1, wnorm_dim=0
+    ):
         """Constructor.
 
         Args:
@@ -329,8 +337,12 @@ class ConvDownBlock(nn.Module):
         """
         super().__init__()
 
-        Conv2dWNUB = weight_norm_wrapper(la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None)
-        Conv2dWN = weight_norm_wrapper(th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None)
+        Conv2dWNUB = weight_norm_wrapper(
+            la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None
+        )
+        Conv2dWN = weight_norm_wrapper(
+            th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None
+        )
 
         self.conv_resize = Conv2dWN(
             in_channels, out_channels, kernel_size=1, stride=2, groups=groups
@@ -368,12 +380,18 @@ class ConvDownBlock(nn.Module):
 
 
 class UpConvBlockDeep(nn.Module):
-    def __init__(self, in_channels, out_channels, size, lrelu_slope=0.2, wnorm_dim=0, groups=1):
+    def __init__(
+        self, in_channels, out_channels, size, lrelu_slope=0.2, wnorm_dim=0, groups=1
+    ):
         super().__init__()
         self.upsample = nn.UpsamplingBilinear2d(size)
 
-        Conv2dWNUB = weight_norm_wrapper(la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None)
-        Conv2dWN = weight_norm_wrapper(th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None)
+        Conv2dWNUB = weight_norm_wrapper(
+            la.Conv2dUB, "Conv2dWNUB", g_dim=wnorm_dim, v_dim=None
+        )
+        Conv2dWN = weight_norm_wrapper(
+            th.nn.Conv2d, "Conv2dWN", g_dim=wnorm_dim, v_dim=None
+        )
         # NOTE: the old one normalizes only across one dimension
 
         self.conv_resize = Conv2dWN(
@@ -438,7 +456,9 @@ class ConvBlockPositional(nn.Module):
         assert len(pos_map.shape) == 3 and pos_map.shape[1] == pos_map.shape[2]
         self.register_buffer("pos_map", pos_map)
 
-        self.conv_resize = WeightNorm(nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim)
+        self.conv_resize = WeightNorm(
+            nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim
+        )
 
         self.conv1 = WeightNorm(
             nn.Conv2d(
@@ -498,7 +518,9 @@ class UpConvBlockPositional(nn.Module):
         self.upsample = nn.UpsamplingBilinear2d(size)
 
         if in_channels != out_channels:
-            self.conv_resize = WeightNorm(nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim)
+            self.conv_resize = WeightNorm(
+                nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim
+            )
 
         self.conv1 = WeightNorm(
             nn.Conv2d(
@@ -537,7 +559,9 @@ class UpConvBlockPositional(nn.Module):
 
 
 class UpConvBlockDeepNoBias(nn.Module):
-    def __init__(self, in_channels, out_channels, size, lrelu_slope=0.2, wnorm_dim=0, groups=1):
+    def __init__(
+        self, in_channels, out_channels, size, lrelu_slope=0.2, wnorm_dim=0, groups=1
+    ):
         super().__init__()
         self.upsample = nn.UpsamplingBilinear2d(size)
         # NOTE: the old one normalizes only across one dimension
@@ -545,12 +569,16 @@ class UpConvBlockDeepNoBias(nn.Module):
             nn.Conv2d(in_channels, out_channels, 1, groups=groups), dim=wnorm_dim
         )
         self.conv1 = WeightNorm(
-            nn.Conv2d(in_channels, in_channels, padding=1, kernel_size=3, groups=groups),
+            nn.Conv2d(
+                in_channels, in_channels, padding=1, kernel_size=3, groups=groups
+            ),
             dim=wnorm_dim,
         )
         self.lrelu1 = nn.LeakyReLU(lrelu_slope)
         self.conv2 = WeightNorm(
-            nn.Conv2d(in_channels, out_channels, padding=1, kernel_size=3, groups=groups),
+            nn.Conv2d(
+                in_channels, out_channels, padding=1, kernel_size=3, groups=groups
+            ),
             dim=wnorm_dim,
         )
         self.lrelu2 = nn.LeakyReLU(lrelu_slope)
@@ -573,7 +601,9 @@ class UpConvBlockXDeep(nn.Module):
         super().__init__()
         self.upsample = nn.UpsamplingBilinear2d(size)
         # TODO: see if this is necce
-        self.conv_resize = WeightNorm(nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim)
+        self.conv_resize = WeightNorm(
+            nn.Conv2d(in_channels, out_channels, 1), dim=wnorm_dim
+        )
         self.conv1 = WeightNorm(
             Conv2dBias(in_channels, in_channels // 2, kernel_size=3, size=size),
             dim=wnorm_dim,
@@ -617,9 +647,13 @@ class UpConvCondBlock(nn.Module):
     def __init__(self, in_channels, out_channels, size, cond_channels, lrelu_slope=0.2):
         super().__init__()
         self.upsample = nn.UpsamplingBilinear2d(size)
-        self.conv_resize = nn.utils.weight_norm(nn.Conv2d(in_channels, out_channels, 1), dim=None)
+        self.conv_resize = nn.utils.weight_norm(
+            nn.Conv2d(in_channels, out_channels, 1), dim=None
+        )
         self.conv1 = WeightNorm(
-            Conv2dBias(in_channels + cond_channels, in_channels, kernel_size=3, size=size),
+            Conv2dBias(
+                in_channels + cond_channels, in_channels, kernel_size=3, size=size
+            ),
         )
         self.lrelu1 = nn.LeakyReLU(lrelu_slope)
         self.conv2 = WeightNorm(
@@ -736,7 +770,9 @@ class PixelShuffleWN(nn.Module):
         self.upscale_factor = upscale_factor
         self.n_in = n_in
         self.n_out = n_out
-        self.conv = la.Conv2dWN(n_in, n_out * (upscale_factor**2), kernel_size=1, padding=0)
+        self.conv = la.Conv2dWN(
+            n_in, n_out * (upscale_factor**2), kernel_size=1, padding=0
+        )
         # NOTE: the bias is 2K?
         self.ps = nn.PixelShuffle(upscale_factor)
         self._init_icnr()
@@ -744,7 +780,9 @@ class PixelShuffleWN(nn.Module):
     def _init_icnr(self):
         self.conv.weight_v.data.copy_(icnr_init(self.conv.weight_v.data))
         self.conv.weight_g.data.copy_(
-            ((self.conv.weight_v.data**2).sum(dim=[1, 2, 3]) ** 0.5)[:, None, None, None]
+            ((self.conv.weight_v.data**2).sum(dim=[1, 2, 3]) ** 0.5)[
+                :, None, None, None
+            ]
         )
 
     def forward(self, x):
@@ -753,7 +791,9 @@ class PixelShuffleWN(nn.Module):
 
 
 class UpscaleNet(nn.Module):
-    def __init__(self, in_channels, out_channels=3, n_ftrs=16, size=1024, upscale_factor=2):
+    def __init__(
+        self, in_channels, out_channels=3, n_ftrs=16, size=1024, upscale_factor=2
+    ):
         super().__init__()
 
         self.conv_block = nn.Sequential(
@@ -780,5 +820,3 @@ class UpscaleNet(nn.Module):
         x = self.conv_block(x)
         x = self.out_block(x)
         return self.pixel_shuffle(x)
-
-

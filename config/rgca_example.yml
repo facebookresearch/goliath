@@ -16,7 +16,7 @@ dataloader:
 model_name: rgca
 
 model:
-  class_name: ca_body.models.${model_name}.AutoEncoder
+  class_name: ca_code.models.${model_name}.AutoEncoder
 
   n_embs: 256
   image_height: 2048
@@ -36,11 +36,11 @@ model:
   learn_blur: true
 
 summary:
-  class_name: ca_body.models.${model_name}.RGCASummary
+  class_name: ca_code.models.${model_name}.RGCASummary
 
 
 loss:
-  class_name: ca_body.loss.ModularLoss
+  class_name: ca_code.loss.ModularLoss
   losses:
     rgb_l1:
       src_key: rgb
@@ -56,14 +56,14 @@ loss:
     l2_reg:
       key: spec_dnml
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
         end: 10000
         init_value: 1.0
         target_value: 0.0
     backlit_reg:
       schedule:
-        class_name: ca_body.loss.StepWeightSchedule
+        class_name: ca_code.loss.StepWeightSchedule
         start: 500000
         end: 600000
         value: 1.0
@@ -99,5 +99,3 @@ train:
   log_every_n_steps: 10
   summary_every_n_steps: 1000
   ckpt_every_n_steps: 1000
-
-  

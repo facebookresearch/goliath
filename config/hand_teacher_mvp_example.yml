@@ -16,7 +16,7 @@ dataloader:
 model_name: hand_teacher_mvp
 
 model:
-  class_name: ca_body.models.${model_name}.AutoEncoder
+  class_name: ca_code.models.${model_name}.AutoEncoder
 
   n_embs: 64
   image_height: 2048
@@ -28,10 +28,10 @@ model:
   learn_blur: true
 
 summary:
-  class_name: ca_body.models.${model_name}.HandMVPSummary
+  class_name: ca_code.models.${model_name}.HandMVPSummary
 
 loss:
-  class_name: ca_body.loss.ModularLoss
+  class_name: ca_code.loss.ModularLoss
   losses:
     rgb_l2:
       src_key: rgb
@@ -58,10 +58,10 @@ optimizer:
     poseencoder2:
       lr: ${lr}
     relightdecoder:
-      lr: ${lr}      
+      lr: ${lr}
 
 train:
-  ckpt: 
+  ckpt:
     ckpt_path: runs/hand_mvp.${sid}.${hand_side}/checkpoints/model.pt
   tag: ${model_name}.${sid}.${hand_side}
   run_dir: runs/${.tag}
@@ -73,5 +73,3 @@ train:
   log_every_n_steps: 100
   summary_every_n_steps: 1000
   ckpt_every_n_steps: 1000
-
-  

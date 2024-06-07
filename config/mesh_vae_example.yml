@@ -14,7 +14,7 @@ dataloader:
 model_name: mesh_vae
 
 model:
-  class_name: ca_body.models.${model_name}.AutoEncoder
+  class_name: ca_code.models.${model_name}.AutoEncoder
 
   encoder:
     n_embs: 1024
@@ -64,11 +64,11 @@ model:
   learn_blur: true
 
 summary:
-  class_name: ca_body.models.${model_name}.MeshVAESummary
+  class_name: ca_code.models.${model_name}.MeshVAESummary
 
 
 loss:
-  class_name: ca_body.loss.ModularLoss
+  class_name: ca_code.loss.ModularLoss
   losses:
     rgb_l1:
       src_key: rgb
@@ -76,7 +76,7 @@ loss:
       mask_key: segmentation_fgbg
       mask_erode: 7
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
         end: 10000
         init_value: 1.0
@@ -87,14 +87,14 @@ loss:
       mask_key: segmentation_fgbg
       mask_erode: 7
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
         end: 10000
         init_value: 1.0
         target_value: 10.0
     mask_l1:
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
         end: 10000
         init_value: 100.0
@@ -103,30 +103,30 @@ loss:
       tgt_key: segmentation_fgbg
     geom_l2:
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
         end: 10000
         init_value: 1.0
         target_value: 1.0e-05
     geom_lap:
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
-        end: 10000        
+        end: 10000
         init_value: 100.0
         target_value: 50.0
     head_geom_l2:
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
-        end: 10000        
+        end: 10000
         init_value: 0.001
         target_value: 1.0e-05
     head_lap:
       schedule:
-        class_name: ca_body.loss.MonotonicWeightSchedule
+        class_name: ca_code.loss.MonotonicWeightSchedule
         start: 0
-        end: 10000                
+        end: 10000
         init_value: 100.0
         target_value: 10.0
     # mouth_eyes_lap_penalty: 0.0001
@@ -171,5 +171,3 @@ train:
   log_every_n_steps: 5
   summary_every_n_steps: 10
   ckpt_every_n_steps: 1000
-
-  

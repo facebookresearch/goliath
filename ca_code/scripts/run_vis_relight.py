@@ -1,21 +1,17 @@
 import os
 import sys
 
-# set the right device
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-# NOTE: assuming we are in `ca_body/scripts`
-sys.path.insert(0, "../")
 import torch as th
 from addict import Dict as AttrDict
 
-from ca_body.utils.dataloader import BodyDataset, collate_fn
-from ca_body.utils.envmap import envmap_to_image, envmap_to_mirrorball
-from ca_body.utils.image import linear2srgb
-from ca_body.utils.lbs import LBSModule
+from ca_code.utils.dataloader import BodyDataset, collate_fn
+from ca_code.utils.envmap import envmap_to_image, envmap_to_mirrorball
+from ca_code.utils.image import linear2srgb
+from ca_code.utils.lbs import LBSModule
 
-from ca_body.utils.light_decorator import EnvSpinDecorator, SingleLightCycleDecorator
-from ca_body.utils.module_loader import load_from_config
-from ca_body.utils.train import load_checkpoint, to_device
+from ca_code.utils.light_decorator import EnvSpinDecorator, SingleLightCycleDecorator
+from ca_code.utils.module_loader import load_from_config
+from ca_code.utils.train import load_checkpoint, to_device
 
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -23,12 +19,13 @@ from torchvision.utils import make_grid, save_image
 
 from tqdm import tqdm
 
-device = th.device("cuda:0")
 
-# NOTE: assuming we are in `ca_body/scripts`
-model_dirs = os.listdir("runs")
-os.makedirs("tmp", exist_ok=True)
-for model_dir in model_dirs:
+def main(config: DictConfig):
+    device = th.device("cuda:0")
+
+    model_dir = config.train.run_dir
+    os.makedirs("tmp", exist_ok=True)
+
     ckpt_path = f"runs/{model_dir}/checkpoints/model.pt"
     if not os.path.exists(ckpt_path):
         ckpt_path = f"runs/{model_dir}/checkpoints/latest.pt"
@@ -85,7 +82,7 @@ for model_dir in model_dirs:
         batch = to_device(batch, device)
         batch_filter_fn(batch)
         with th.no_grad():
-            preds = model_p(**batch, index=[180+i])
+            preds = model_p(**batch, index=[180 + i])
 
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
@@ -98,8 +95,12 @@ for model_dir in model_dirs:
         f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_elem.mp4 -y"
     )
 
+    # download 1k hdr from https://polyhaven.com/a/symmetrical_garden_02
     model_e = EnvSpinDecorator(
-        model, envmap_path="/mnt/captures/saibi/data/envmaps/hdrs/0.hdr", ydown=True, env_scale=12.0
+        model,
+        envmap_path="./symmetrical_garden_02_1k.hdr",
+        ydown=True,
+        env_scale=18.0,
     ).to(device)
 
     # forward
@@ -119,3 +120,18 @@ for model_dir in model_dirs:
     os.system(
         f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_env.mp4 -y"
     )
+
+
+if __name__ == "__main__":
+
+    config_path: str = sys.argv[1]
+    console_commands: List[str] = sys.argv[2:]
+
+    config = OmegaConf.load(config_path)
+    config_cli = OmegaConf.from_cli(args_list=console_commands)
+    if config_cli:
+        logger.info("Overriding with the following args values:")
+        logger.info(f"{OmegaConf.to_yaml(config_cli)}")
+        config = OmegaConf.merge(config, config_cli)
+
+    main(config)
