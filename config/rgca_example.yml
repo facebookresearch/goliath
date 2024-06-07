@@ -1,0 +1,103 @@
+
+# a dummy example
+sid: AXE977
+
+data:
+  root_path: /mnt/captures/oss/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
+  shared_assets_path: /mnt/captures/oss/goliath/shared/static_assets_head.pt
+  split: train
+  shuffle: True
+  fully_lit_only: False
+
+dataloader:
+  batch_size: 4
+  num_workers: 8
+
+model_name: rgca
+
+model:
+  class_name: ca_body.models.${model_name}.AutoEncoder
+
+  n_embs: 256
+  image_height: 2048
+  image_width: 1334
+
+  encoder:
+    noise_std: 1.0
+    mean_scale: 0.1
+    logvar_scale: 0.01
+
+  decoder:
+    n_color_sh: 3
+
+  cal:
+    identity_camera: 400870
+
+  learn_blur: true
+
+summary:
+  class_name: ca_body.models.${model_name}.RGCASummary
+
+
+loss:
+  class_name: ca_body.loss.ModularLoss
+  losses:
+    rgb_l1:
+      src_key: rgb
+      tgt_key: image
+      mask_key: image_weight
+      weight: 1e1
+    rgb_ssim:
+      src_key: rgb
+      tgt_key: image
+      mask_key: image_weight
+      weight: 2e-1
+    geom_l2: 0.4 # in paper, it was 10 because it's normalized by variance
+    l2_reg:
+      key: spec_dnml
+      schedule:
+        class_name: ca_body.loss.MonotonicWeightSchedule
+        start: 0
+        end: 10000
+        init_value: 1.0
+        target_value: 0.0
+    backlit_reg:
+      schedule:
+        class_name: ca_body.loss.StepWeightSchedule
+        start: 500000
+        end: 600000
+        value: 1.0
+    bound_primscale: 1e-2
+    negcolor: 1e-2
+    learn_blur: 0.001
+    kl: 0.002
+
+
+lr: 5.0e-4
+optimizer:
+  class_name: torch.optim.Adam
+  per_module:
+    encoder:
+      lr: ${lr}
+    geomdecoder:
+      lr: ${lr}
+    decoder:
+      lr: ${lr}
+    cal:
+      lr: ${lr}
+    learn_blur:
+      lr: 0.001
+
+train:
+  tag: ${model_name}.${sid}
+  run_dir: runs/${.tag}
+  tb_dir: ${.run_dir}/tb
+  ckpt_dir: ${.run_dir}/checkpoints
+
+  # CHANGE ME
+  n_max_iters: 600000
+  log_every_n_steps: 10
+  summary_every_n_steps: 1000
+  ckpt_every_n_steps: 1000
+
+  

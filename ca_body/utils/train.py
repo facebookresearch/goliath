@@ -3,6 +3,7 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+import numpy as np
 import torch as th
 import os
 import re
@@ -11,11 +12,9 @@ import copy
 import typing
 import inspect
 from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
-
 import torch.nn as nn
 
-
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import OmegaConf, DictConfig
 
@@ -133,14 +132,9 @@ def load_checkpoint(
     # adding
     if os.path.isdir(ckpt_path):
         if iteration is None:
-            # lookup latest iteration
-            iteration = max(
-                [
-                    int(os.path.splitext(os.path.basename(p))[0])
-                    for p in glob.glob(os.path.join(ckpt_path, "*.pt"))
-                ]
-            )
-        ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
+            ckpt_path = os.path.join(ckpt_path, "latest.pt")
+        else:
+            ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
     logger.info(f"loading checkpoint {ckpt_path}")
     ckpt_dict = th.load(ckpt_path, map_location=map_location)
     for name, mod in modules.items():
@@ -148,7 +142,10 @@ def load_checkpoint(
         if ignore_names is not None and name in ignore_names:
             logger.info(f"skipping: {ignore_names[name]}")
             params = filter_params(params, ignore_names[name])
-        mod.load_state_dict(params, strict=strict)
+        if isinstance(mod, nn.Module):
+            mod.load_state_dict(params, strict=strict)
+        elif isinstance(mod, th.optim.Optimizer):
+            mod.load_state_dict(params)
 
 
 def train(
@@ -160,6 +157,7 @@ def train(
     lr_scheduler: Optional[LRScheduler] = None,
     train_writer: Optional[SummaryWriter] = None,
     summary_fn: Optional[Callable] = None,
+    batch_filter_fn: Optional[Callable] = None,
     saving_enabled: bool = True,
     logging_enabled: bool = True,
     summary_enabled: bool = True,
@@ -167,28 +165,51 @@ def train(
     device: Optional[Union[th.device, str]] = "cuda:0",
 ) -> None:
 
+    # Loss history for explosion checking.
+    loss_history = deque(maxlen=32)
+    loss_history.append(np.inf)
     for batch in train_data:
         if batch is None:
             logger.info("skipping empty batch")
             continue
         batch = to_device(batch, device)
         batch["iteration"] = iteration
+                
+        if batch_filter_fn is not None:
+            batch_filter_fn(batch)
 
         # leaving only inputs acutally used by the model
         preds = model(**filter_inputs(batch, model, required_only=False))
 
         # TODO: switch to the old-school loss computation
         loss, loss_dict = loss_fn(preds, batch, iteration=iteration)
-        assert not th.isnan(loss), "loss is NaN"
 
-        if th.isnan(loss):
-            _loss_dict = process_losses(loss_dict)
-            loss_str = " ".join([f"{k}={v:.4f}" for k, v in _loss_dict.items()])
-            logger.info(f"iter={iteration}: {loss_str}")
-            raise ValueError("loss is NaN")
+        prev_loss = sum(loss_history) / len(loss_history)
+        exploded = (
+            loss.item() > 10 * prev_loss or th.isnan(loss) or th.isinf(loss)
+        )
+        if exploded:
+            logger.info(f"explosion detected: iter={iteration}: frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")
+        else:
+            loss_history.append(loss.item())
+
+        if exploded:
+            load_checkpoint(
+                config.train.ckpt_dir, modules={"model": model, "optimizer": optimizer}
+            )
+            loss_history.clear()
+            loss_history.append(np.inf)
+            continue
 
         optimizer.zero_grad()
         loss.backward()
+        
+        optim_params = [p for pg in optimizer.param_groups for p in pg["params"]]
+        for p in optim_params:
+            if hasattr(p, "grad") and p.grad is not None:
+                p.grad.data[th.isnan(p.grad.data)] = 0
+                p.grad.data[th.isinf(p.grad.data)] = 0
+        th.nn.utils.clip_grad_norm_(optim_params, 1.0)
         optimizer.step()
 
         if logging_enabled and iteration % config.train.log_every_n_steps == 0:

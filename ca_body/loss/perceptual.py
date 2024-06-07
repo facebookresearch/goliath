@@ -5,11 +5,12 @@ from typing import Any, Mapping, Optional
 
 import torch as th
 import torch.nn as nn
-from .effnet import EfficientNetLoss
-from .vgg import VGGLossMasked
 
 from ca_body.loss import register_loss
 from ca_body.utils.image import erode
+
+from .effnet import EfficientNetLoss
+from .vgg import VGGLossMasked
 
 
 class BasePerceptualLoss(nn.Module):

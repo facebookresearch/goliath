@@ -7,7 +7,7 @@ import torch as th
 import torch.nn as nn
 
 from typing import Tuple, Dict
-from attrdict import AttrDict
+from addict import Dict as AttrDict
 
 import numpy as np
 

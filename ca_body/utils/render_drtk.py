@@ -11,7 +11,6 @@ import torch.nn.functional as F
 # NOTE: using new drtk API
 from drtk import rasterize, render, transform, interpolate, edge_grad_estimator
 
-
 class RenderLayer(nn.Module):
 
     def __init__(self, h, w, vi, vt, vti, flip_uvs=False):
@@ -22,6 +21,9 @@ class RenderLayer(nn.Module):
         self.register_buffer("vt", vt, persistent=False)
         self.register_buffer("vti", vti, persistent=False)
         self.flip_uvs = flip_uvs
+        if flip_uvs:
+            self.vt[:, 1] = 1 - self.vt[:, 1]
+            
         image_size = th.as_tensor([h, w], dtype=th.int32)
         self.register_buffer("image_size", image_size)
 
@@ -77,4 +79,5 @@ class RenderLayer(nn.Module):
             "vt_img": vt_img,
             "index_img": index_img,
             "bary_img": bary_img,
+            "mask": mask,
         }

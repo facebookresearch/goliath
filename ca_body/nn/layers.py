@@ -16,6 +16,35 @@ from torch.nn.utils.weight_norm import remove_weight_norm, WeightNorm
 
 fc_default_activation = th.nn.LeakyReLU(0.2, inplace=True)
 
+def make_linear(n_in, n_out, mode, act=None, bias=True):
+    if mode == "wn":
+        layers = [LinearWN(n_in, n_out, bias=bias)]
+        if act is not None:
+            layers.append(act)
+    return layers
+
+
+def make_conv(n_in, n_out, fs, stride, pad, mode, act=None, trans=False, ub=None, bias=True):
+    if mode == "wn":
+        if ub:
+            if trans:
+                layer = ConvTranspose2dWNUB(n_in, n_out, ub[0], ub[1], fs, stride, pad, bias=bias)
+            else:
+                layer = Conv2dWNUB(n_in, n_out, ub[0], ub[1], fs, stride, pad, bias=bias)
+        else:
+            if trans:
+                layer = ConvTranspose2dWN(n_in, n_out, fs, stride, pad, bias=bias)
+            else:
+                layer = Conv2dWN(n_in, n_out, fs, stride, pad, bias=bias)
+
+        layers = [layer]
+        if act is not None:
+            layers.append(act)
+
+    return layers
+
+def make_conv_trans(*args, **kwargs):
+    return make_conv(*args, **kwargs, trans=True)
 
 def gaussian_kernel(ksize: int, std: Optional[float] = None) -> np.ndarray:
     """Generates numpy array filled in with Gaussian values.
