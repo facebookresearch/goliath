@@ -3,12 +3,12 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+import ca_code.nn.layers as la
 import torch as th
 import torch.nn as nn
 
-from ca_body.nn.blocks import weights_initializer
-from ca_body.nn.layers import Conv2dWNUB, ConvTranspose2dWNUB, glorot
-import ca_body.nn.layers as la
+from ca_code.nn.blocks import weights_initializer
+from ca_code.nn.layers import Conv2dWNUB, ConvTranspose2dWNUB, glorot
 
 
 class UNetWB(nn.Module):

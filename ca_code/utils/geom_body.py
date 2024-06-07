@@ -17,7 +17,7 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
-from ca_body.utils.geom import (
+from ca_code.utils.geom import (
     index_image_impaint,
     make_uv_barys,
     make_uv_vert_index,

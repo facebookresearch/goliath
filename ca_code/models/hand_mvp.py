@@ -7,20 +7,20 @@ import logging
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import ca_body.nn.layers as la
+import ca_code.nn.layers as la
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from ca_body.nn.blocks import (
+from ca_code.nn.blocks import (
     ConvBlock,
     tile2d,
 )
 
-from ca_body.nn.color_cal import CalV5
+from ca_code.nn.color_cal import CalV5
 
-from ca_body.nn.dof_cal import LearnableBlur
+from ca_code.nn.dof_cal import LearnableBlur
 
-from ca_body.utils.geom import (
+from ca_code.utils.geom import (
     compute_tbn,
     compute_view_cos,
     GeometryModule,
@@ -28,16 +28,16 @@ from ca_body.utils.geom import (
     values_to_uv,
 )
 
-from ca_body.utils.image import (
+from ca_code.utils.image import (
     linear2srgb,
     scale_diff_image,
 )
 
-from ca_body.utils.lbs import LBSModule
+from ca_code.utils.lbs import LBSModule
 
-# from ca_body.utils.render_drtk import RenderLayer
-from ca_body.utils.render_pytorch3d import RenderLayer
-from ca_body.utils.render_raymarcher import Raymarcher
+# from ca_code.utils.render_drtk import RenderLayer
+from ca_code.utils.render_pytorch3d import RenderLayer
+from ca_code.utils.render_raymarcher import Raymarcher
 
 from extensions.utils.utils import compute_raydirs
 

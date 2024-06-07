@@ -11,7 +11,7 @@ import torch.nn as nn
 
 from typing import Dict, Any
 
-from ca_body.utils.quaternion import Quaternion
+from ca_code.utils.quaternion import Quaternion
 
 from typing import Optional, Tuple
 

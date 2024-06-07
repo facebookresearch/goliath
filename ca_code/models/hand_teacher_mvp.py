@@ -7,16 +7,16 @@ import logging
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import ca_body.nn.layers as la
+import ca_code.nn.layers as la
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ca_body.models.hand_mvp import PoseEncoder
-from ca_body.models.hand_mvp import AutoEncoder as BaseAE
+from ca_code.models.hand_mvp import PoseEncoder
+from ca_code.models.hand_mvp import AutoEncoder as BaseAE
 
-from ca_body.utils.image import linear2srgb, scale_diff_image
-from ca_body.utils.envmap import compose_envmap
+from ca_code.utils.image import linear2srgb, scale_diff_image
+from ca_code.utils.envmap import compose_envmap
 
 from drtk import transform
 

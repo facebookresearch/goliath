@@ -20,8 +20,8 @@ from omegaconf import OmegaConf, DictConfig
 
 from torch.optim.lr_scheduler import LRScheduler
 
-from ca_body.utils.torchutils import to_device
-from ca_body.utils.module_loader import load_class, build_optimizer
+from ca_code.utils.torchutils import to_device
+from ca_code.utils.module_loader import load_class, build_optimizer
 
 from torchvision.utils import make_grid
 

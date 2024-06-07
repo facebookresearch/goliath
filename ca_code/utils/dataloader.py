@@ -18,7 +18,7 @@ import pillow_avif
 import torch
 import torch.nn.functional as F
 
-from ca_body.utils.obj import load_obj
+from ca_code.utils.obj import load_obj
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
 from scipy.ndimage.morphology import binary_dilation

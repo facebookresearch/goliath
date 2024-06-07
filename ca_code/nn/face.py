@@ -1,17 +1,17 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-import torch as th
-import torch.nn as nn
+from typing import Dict, Tuple
 
-from typing import Tuple, Dict
-from addict import Dict as AttrDict
+import ca_code.nn.layers as la
 
 import numpy as np
+import torch as th
+import torch.nn as nn
+from addict import Dict as AttrDict
 
-import ca_body.nn.layers as la
 
 class FaceDecoderFrontal(nn.Module):
     def __init__(
@@ -31,7 +31,9 @@ class FaceDecoderFrontal(nn.Module):
         )
         self.tex_out_shp = tex_out_shp
 
-        self.encmod = nn.Sequential(la.LinearWN(n_latent, 256), nn.LeakyReLU(0.2, inplace=True))
+        self.encmod = nn.Sequential(
+            la.LinearWN(n_latent, 256), nn.LeakyReLU(0.2, inplace=True)
+        )
         self.geommod = nn.Sequential(la.LinearWN(256, n_vert_out))
 
         self.viewmod = nn.Sequential(la.LinearWN(3, 8), nn.LeakyReLU(0.2, inplace=True))

@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, Any, List
 
 import numpy as np
 import torch as th
@@ -14,35 +14,36 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 from torchvision.transforms.functional import gaussian_blur
 
-import ca_body.nn.layers as la
+import ca_code.nn.layers as la
 
-from ca_body.nn.blocks import (
+from ca_code.nn.blocks import (
     ConvBlock,
     ConvDownBlock,
     UpConvBlockDeep,
     tile2d,
     weights_initializer,
 )
-from ca_body.nn.dof_cal import LearnableBlur
+from ca_code.nn.dof_cal import LearnableBlur
 
-from ca_body.utils.geom import (
+from ca_code.utils.geom import (
     GeometryModule,
     compute_view_cos,
     depth_discontuity_mask,
     depth2normals,
 )
 
-from ca_body.nn.shadow import ShadowUNet, PoseToShadow
-from ca_body.nn.unet import UNetWB
-from ca_body.nn.color_cal import CalV5
+from ca_code.nn.shadow import ShadowUNet, PoseToShadow
+from ca_code.nn.unet import UNetWB
+from ca_code.nn.color_cal import CalV5
 
-from ca_body.utils.image import linear2displayBatch
-from ca_body.utils.lbs import LBSModule
-from ca_body.utils.render_pytorch3d import RenderLayer
-from ca_body.utils.seams import SeamSampler
-from ca_body.utils.render_pytorch3d import RenderLayer
+from ca_code.utils.image import linear2displayBatch
 
-from ca_body.nn.face import FaceDecoderFrontal
+from ca_code.utils.lbs import LBSModule
+# from care.models.body.lbs import LBSModule
+from ca_code.utils.seams import SeamSampler
+
+# from ca_code.utils.render_pytorch3d import RenderLayer
+from ca_code.utils.render_drtk import RenderLayer
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,9 @@ class AutoEncoder(nn.Module):
     def __init__(
         self,
         encoder,
+        encoder_face,
         decoder,
         decoder_view,
-        encoder_face,
-        # hqlp decoder to get the codes
-        decoder_face,
         shadow_net,
         upscale_net,
         assets,
@@ -101,8 +100,8 @@ class AutoEncoder(nn.Module):
         self.lbs_fn = LBSModule(
             assets.lbs_model_json,
             assets.lbs_config_dict,
-            assets.lbs_template_verts,
-            assets.lbs_scale,
+            assets.template_mesh[0],
+            assets.skeleton_scales,
             assets.global_scaling,
         )
 
@@ -112,7 +111,8 @@ class AutoEncoder(nn.Module):
         # joint tex -> body and clothes
         # TODO: why do we have a joint one in the first place?
         tex_mean = gaussian_blur(
-            th.as_tensor(assets.tex_mean)[np.newaxis], kernel_size=11
+            th.as_tensor(assets.color_mean, dtype=th.float32)[np.newaxis],
+            kernel_size=11,
         )
         self.register_buffer(
             "tex_mean", F.interpolate(tex_mean, (2048, 2048), mode="bilinear")
@@ -142,25 +142,14 @@ class AutoEncoder(nn.Module):
         # embs for everything but face
         non_head_mask = 1.0 - assets.face_mask
         self.encoder = Encoder(
-            geo_fn=self.geo_fn,
             mask=non_head_mask,
             **encoder,
         )
+
         self.encoder_face = FaceEncoder(
-            assets=assets,
+            mask=assets.face_mask,
             **encoder_face,
         )
-
-        # using face decoder to generate better conditioning
-        decoder_face_ckpt_path = None
-        if "ckpt" in decoder_face:
-            decoder_face_ckpt_path = decoder_face.pop("ckpt")
-        self.decoder_face = FaceDecoderFrontal(assets=assets, **decoder_face)
-
-        if decoder_face_ckpt_path is not None:
-            self.decoder_face.load_state_dict(
-                th.load(decoder_face_ckpt_path), strict=False
-            )
 
         self.decoder_view = UNetViewDecoder(
             self.geo_fn,
@@ -169,7 +158,7 @@ class AutoEncoder(nn.Module):
         )
 
         self.shadow_net = ShadowUNet(
-            ao_mean=assets.ao_mean,
+            ao_mean=assets.ambient_occlusion_mean,
             interp_mode="bilinear",
             biases=False,
             **shadow_net,
@@ -212,30 +201,6 @@ class AutoEncoder(nn.Module):
                 flip_uvs=False,
             )
 
-    @th.jit.unused
-    def compute_summaries(self, preds, batch):
-        # TODO: switch to common summaries?
-        # return compute_summaries_mesh(preds, batch)
-        rgb = linear2displayBatch(preds["rgb"][:, :3])
-        rgb_gt = linear2displayBatch(batch["image"])
-        depth = preds["depth"][:, np.newaxis]
-        mask = depth > 0.0
-        normals = (
-            255 * (1.0 - depth2normals(depth, batch["focal"], batch["princpt"])) / 2.0
-        ) * mask
-        grid_rgb = make_grid(rgb, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        grid_rgb_gt = (
-            make_grid(rgb_gt, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        )
-        grid_normals = (
-            make_grid(normals, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
-        )
-
-        progress_image = th.cat([grid_rgb, grid_rgb_gt, grid_normals], dim=0)
-        return {
-            "progress_image": (progress_image, "png"),
-        }
-
     def forward_tex(self, tex_mean_rec, tex_view_rec, shadow_map):
         x = th.cat([tex_mean_rec, tex_view_rec], dim=1)
         tex_rec = tex_mean_rec + tex_view_rec
@@ -262,66 +227,48 @@ class AutoEncoder(nn.Module):
 
         return tex_rec
 
-    def encode(self, geom: th.Tensor, lbs_motion: th.Tensor, face_embs_hqlp: th.Tensor):
-
+    def encode(
+        self, registration_vertices: th.Tensor, pose: th.Tensor
+    ) -> Dict[str, th.Tensor]:
         with th.no_grad():
-            verts_unposed = self.lbs_fn.unpose(geom, lbs_motion)
+            verts_unposed = self.lbs_fn.unpose(registration_vertices, pose)
             verts_unposed_uv = self.geo_fn.to_uv(verts_unposed)
-
-        # extract face region for geom + tex
-        enc_preds = self.encoder(motion=lbs_motion, verts_unposed=verts_unposed)
-        # TODO: probably need to rename these to `face_embs_mugsy` or smth
-        # TODO: we need the same thing for face?
-        # enc_face_preds = self.encoder_face(verts_unposed_uv)
-        with th.no_grad():
-            face_dec_preds = self.decoder_face(face_embs_hqlp)
-        enc_face_preds = self.encoder_face(**face_dec_preds)
-
-        preds = {
-            **enc_preds,
-            **enc_face_preds,
-            "face_dec_preds": face_dec_preds,
-        }
-        return preds
+        # TODO: add separate face embeddings ?
+        enc_preds = self.encoder(verts_unposed_uv)
+        face_enc_preds = self.encoder_face(verts_unposed_uv)
+        return {**enc_preds, **face_enc_preds}
 
     def forward(
         self,
         # TODO: should we try using this as well for cond?
-        lbs_motion: th.Tensor,
+        pose: th.Tensor,
         campos: th.Tensor,
-        geom: Optional[th.Tensor] = None,
-        ao: Optional[th.Tensor] = None,
+        registration_vertices: Optional[th.Tensor] = None,
+        ambient_occlusion: Optional[th.Tensor] = None,
         K: Optional[th.Tensor] = None,
         Rt: Optional[th.Tensor] = None,
-        image_bg: Optional[th.Tensor] = None,
-        image: Optional[th.Tensor] = None,
-        image_mask: Optional[th.Tensor] = None,
+        camera_id: Optional[List[str]] = None,
+        frame_id: Optional[th.Tensor] = None,
         embs: Optional[th.Tensor] = None,
-        _index: Optional[Dict[str, th.Tensor]] = None,
-        face_embs: Optional[th.Tensor] = None,
-        embs_conv: Optional[th.Tensor] = None,
-        tex_seg: Optional[th.Tensor] = None,
-        encode=True,
+        encode: bool = True,
         iteration: Optional[int] = None,
         **kwargs,
-    ):
-        B = lbs_motion.shape[0]
+    ) -> Dict[str, Any]:
+        B = pose.shape[0]
 
         if not th.jit.is_scripting() and encode:
             # NOTE: these are `face_embs_hqlp`
-            enc_preds = self.encode(geom, lbs_motion, face_embs)
+            enc_preds = self.encode(registration_vertices, pose)
             embs = enc_preds["embs"]
-            # NOTE: these are `face_embs` in body space
-            face_embs_body = enc_preds["face_embs"]
+            face_embs = enc_preds["face_embs"]
 
         dec_preds = self.decoder(
-            motion=lbs_motion,
+            pose=pose,
             embs=embs,
-            face_embs=face_embs_body,
-            embs_conv=embs_conv,
+            face_embs=face_embs,
         )
 
-        geom_rec = self.lbs_fn.pose(dec_preds["geom_delta_rec"], lbs_motion)
+        geom_rec = self.lbs_fn.pose(dec_preds["geom_delta_rec"], pose)
 
         dec_view_preds = self.decoder_view(
             geom_rec=geom_rec,
@@ -329,15 +276,14 @@ class AutoEncoder(nn.Module):
             camera_pos=campos,
         )
 
-        # TODO: should we train an AO model?
         if self.training and self.pose_to_shadow_enabled:
-            shadow_preds = self.shadow_net(ao_map=ao)
-            pose_shadow_preds = self.pose_to_shadow(lbs_motion)
+            shadow_preds = self.shadow_net(ao_map=ambient_occlusion)
+            pose_shadow_preds = self.pose_to_shadow(pose)
             shadow_preds["pose_shadow_map"] = pose_shadow_preds["shadow_map"]
         elif self.pose_to_shadow_enabled:
-            shadow_preds = self.pose_to_shadow(lbs_motion)
+            shadow_preds = self.pose_to_shadow(pose)
         else:
-            shadow_preds = self.shadow_net(ao_map=ao)
+            shadow_preds = self.shadow_net(ao_map=ambient_occlusion)
 
         tex_rec = self.forward_tex(
             dec_preds["tex_mean_rec"],
@@ -346,7 +292,7 @@ class AutoEncoder(nn.Module):
         )
 
         if not th.jit.is_scripting() and self.cal_enabled:
-            tex_rec = self.cal(tex_rec, self.cal.name_to_idx(_index["camera"]))
+            tex_rec = self.cal(tex_rec, self.cal.name_to_idx(camera_id))
 
         preds = {
             "geom": geom_rec,
@@ -360,24 +306,35 @@ class AutoEncoder(nn.Module):
             preds.update(**enc_preds)
 
         if not th.jit.is_scripting() and self.rendering_enabled:
-
+            tex_seg = th.ones_like(tex_rec[:, :1])
             # NOTE: this is a reduced version tested for forward only
             renders = self.renderer(
                 preds["geom"],
-                tex_rec,
+                tex=th.cat([tex_rec, tex_seg], dim=1),
                 K=K,
                 Rt=Rt,
             )
 
-            preds.update(rgb=renders["render"])
+            render_rgb = renders["render"][:, :3]
+            render_alpha = renders["render"][:, 3:]
+            render_depth = renders["depth_img"][:, None].detach()
+
+            depth_disc_mask = depth_discontuity_mask(render_depth)
+
+            preds.update(
+                rgb=render_rgb,
+                alpha=render_alpha,
+                depth_disc_mask=depth_disc_mask,
+                depth=render_depth,
+            )
 
         if not th.jit.is_scripting() and self.learn_blur_enabled:
-            preds["rgb"] = self.learn_blur(preds["rgb"], _index["camera"])
-            preds["learn_blur_weights"] = self.learn_blur.reg(_index["camera"])
+            preds["rgb"] = self.learn_blur(preds["rgb"], camera_id)
+            preds["learn_blur_weights"] = self.learn_blur.reg(camera_id)
 
         if not th.jit.is_scripting() and self.pixel_cal_enabled:
             assert self.cal_enabled
-            cam_idxs = self.cal.name_to_idx(_index["camera"])
+            cam_idxs = self.cal.name_to_idx(camera_id)
             pixel_bias = self.pixel_cal(cam_idxs)
             preds["rgb"] = preds["rgb"] + pixel_bias
 
@@ -389,19 +346,21 @@ class Encoder(nn.Module):
 
     def __init__(
         self,
-        geo_fn,
-        n_embs,
-        noise_std,
-        mask,
-        logvar_scale=0.1,
+        n_embs: int,
+        mask: th.Tensor,
+        noise_std: float = 1.0,
+        mean_scale: float = 0.1,
+        logvar_scale: float = 0.1,
+        verts_scale: float = 1.0,
     ):
         """Fixed-width conv encoder."""
         super().__init__()
 
         self.noise_std = noise_std
         self.n_embs = n_embs
-        self.geo_fn = geo_fn
+        self.mean_scale = mean_scale
         self.logvar_scale = logvar_scale
+        self.verts_scale = verts_scale
 
         self.verts_conv = ConvDownBlock(3, 8, 512)
 
@@ -423,31 +382,27 @@ class Encoder(nn.Module):
         self.mu = la.LinearWN(4 * 4 * 128, self.n_embs)
         self.logvar = la.LinearWN(4 * 4 * 128, self.n_embs)
 
-        self.apply(weights_initializer(0.2))
-        self.mu.apply(weights_initializer(1.0))
-        self.logvar.apply(weights_initializer(1.0))
+        self.apply(lambda m: la.glorot(m, 0.2))
+        la.glorot(self.mu, 1.0)
+        la.glorot(self.logvar, 1.0)
 
-    def forward(self, motion, verts_unposed):
+    def forward(self, verts_unposed_uv: th.Tensor) -> Dict[str, th.Tensor]:
         preds = {}
 
-        B = motion.shape[0]
+        B = verts_unposed_uv.shape[0]
 
-        # converting motion to the unposed
         verts_cond = (
             F.interpolate(
-                self.geo_fn.to_uv(verts_unposed), size=(512, 512), mode="bilinear"
+                verts_unposed_uv * self.verts_scale, size=(512, 512), mode="bilinear"
             )
             * self.mask
         )
         verts_cond = self.verts_conv(verts_cond)
 
-        # tex_cond = F.interpolate(tex_avg, size=(512, 512), mode='bilinear') * self.mask
-        # tex_cond = self.tex_conv(tex_cond)
-        # joint_cond = th.cat([verts_cond, tex_cond], dim=1)
         joint_cond = verts_cond
         x = self.joint_conv_blocks(joint_cond)
         x = x.reshape(B, -1)
-        embs_mu = self.mu(x)
+        embs_mu = self.mean_scale * self.mu(x)
         embs_logvar = self.logvar_scale * self.logvar(x)
 
         # NOTE: the noise is only applied to the input-conditioned values
@@ -466,8 +421,22 @@ class Encoder(nn.Module):
         return preds
 
 
+class FaceEncoder(nn.Module):
+    def __init__(
+        self,
+        mask: th.Tensor,
+        **kwargs,
+    ) -> None:
+        super().__init__()
+        self.encoder = Encoder(**kwargs, mask=mask[512:, :512])
+
+    def forward(self, verts_unposed_uv: th.Tensor) -> Dict[str, th.Tensor]:
+        face_verts_uv = verts_unposed_uv[:, :, 512:, :512]
+        preds = self.encoder(face_verts_uv)
+        return {f"face_{k}": v for k, v in preds.items()}
+
+
 class ConvDecoder(nn.Module):
-    """Multi-region view-independent decoder."""
 
     def __init__(
         self,
@@ -483,10 +452,15 @@ class ConvDecoder(nn.Module):
         n_init_channels,
         n_min_channels,
         assets,
+        tex_scale: float = 0.001,
+        verts_scale: float = 0.01,
     ):
         super().__init__()
 
         self.geo_fn = geo_fn
+
+        self.tex_scale = tex_scale
+        self.verts_scale = verts_scale
 
         self.uv_size = uv_size
         self.init_uv_size = init_uv_size
@@ -573,9 +547,13 @@ class ConvDecoder(nn.Module):
             padding=1,
         )
 
-        self.apply(weights_initializer(0.2))
-        self.verts_conv.apply(weights_initializer(1.0))
-        self.tex_conv.apply(weights_initializer(1.0))
+        self.apply(lambda x: la.glorot(x, 0.2))
+
+        la.glorot(self.verts_conv, 1.0)
+        la.glorot(self.tex_conv, 1.0)
+
+        self.verts_scale = verts_scale
+        self.tex_scale = tex_scale
 
         self.seam_sampler = seam_sampler
 
@@ -596,23 +574,22 @@ class ConvDecoder(nn.Module):
         ]
         self.register_buffer("body_cond_mask", body_cond_mask)
 
-    def forward(self, motion, embs, face_embs, embs_conv: Optional[th.Tensor] = None):
+    def forward(
+        self, pose: th.Tensor, embs: th.Tensor, face_embs: th.Tensor
+    ) -> Dict[str, th.Tensor]:
+        B = pose.shape[0]
 
         # processing pose
-        pose = motion[:, 6:]
-
-        B = pose.shape[0]
+        local_pose = pose[:, 6:]
 
         non_head_mask = (self.body_cond_mask * (1.0 - self.face_cond_mask)).clip(
             0.0, 1.0
         )
 
-        pose_masked = tile2d(pose, self.init_uv_size) * self.pose_cond_mask
+        pose_masked = tile2d(local_pose, self.init_uv_size) * self.pose_cond_mask
         pose_conv = self.local_pose_conv_block(pose_masked) * non_head_mask
 
-        # TODO: decoding properly?
-        if embs_conv is None:
-            embs_conv = self.embs_conv_block(self.embs_fc(embs).reshape(B, 128, 4, 4))
+        embs_conv = self.embs_conv_block(self.embs_fc(embs).reshape(B, 128, 4, 4))
 
         face_conv = self.face_embs_conv_block(
             self.face_embs_fc(face_embs).reshape(B, 32, 4, 4)
@@ -637,10 +614,10 @@ class ConvDecoder(nn.Module):
 
         verts_features, tex_features = th.split(x, self.n_channels[-1], 1)
 
-        verts_uv_delta_rec = self.verts_conv(verts_features)
+        verts_uv_delta_rec = self.verts_conv(verts_features) * self.verts_scale
         # TODO: need to get values
         verts_delta_rec = self.geo_fn.from_uv(verts_uv_delta_rec)
-        tex_mean_rec = self.tex_conv(tex_features)
+        tex_mean_rec = self.tex_conv(tex_features) * self.tex_scale
 
         preds = {
             "geom_delta_rec": verts_delta_rec,
@@ -650,101 +627,6 @@ class ConvDecoder(nn.Module):
             "pose_conv": pose_conv,
         }
 
-        return preds
-
-
-class FaceEncoder(nn.Module):
-    """A joint encoder for tex and geometry."""
-
-    def __init__(
-        self,
-        noise_std,
-        assets,
-        n_embs=256,
-        uv_size=512,
-        logvar_scale=0.1,
-        n_vert_in=7306 * 3,
-        prefix="face_",
-    ):
-        """Fixed-width conv encoder."""
-        super().__init__()
-
-        # TODO:
-        self.noise_std = noise_std
-        self.n_embs = n_embs
-        self.logvar_scale = logvar_scale
-        self.prefix = prefix
-        self.uv_size = uv_size
-
-        assert self.uv_size == 512
-
-        tex_cond_mask = assets.mugsy_face_mask[..., 0]
-        tex_cond_mask = th.as_tensor(tex_cond_mask, dtype=th.float32)[
-            np.newaxis, np.newaxis
-        ]
-        tex_cond_mask = F.interpolate(
-            tex_cond_mask,
-            (self.uv_size, self.uv_size),
-            mode="bilinear",
-            align_corners=True,
-        )
-        self.register_buffer("tex_cond_mask", tex_cond_mask)
-
-        self.conv_blocks = nn.Sequential(
-            ConvDownBlock(3, 4, 512),
-            ConvDownBlock(4, 8, 256),
-            ConvDownBlock(8, 16, 128),
-            ConvDownBlock(16, 32, 64),
-            ConvDownBlock(32, 64, 32),
-            ConvDownBlock(64, 128, 16),
-            ConvDownBlock(128, 128, 8),
-        )
-        self.geommod = nn.Sequential(
-            la.LinearWN(n_vert_in, 256), nn.LeakyReLU(0.2, inplace=True)
-        )
-        self.jointmod = nn.Sequential(
-            la.LinearWN(256 + 128 * 4 * 4, 512), nn.LeakyReLU(0.2, inplace=True)
-        )
-        # TODO: should we put initializer
-        self.mu = la.LinearWN(512, self.n_embs)
-        self.logvar = la.LinearWN(512, self.n_embs)
-
-        self.apply(weights_initializer(0.2))
-        self.mu.apply(weights_initializer(1.0))
-        self.logvar.apply(weights_initializer(1.0))
-
-    # TODO: compute_losses()?
-
-    def forward(self, face_geom: th.Tensor, face_tex: th.Tensor, **kwargs):
-        B = face_geom.shape[0]
-
-        tex_cond = F.interpolate(
-            face_tex, (self.uv_size, self.uv_size), mode="bilinear", align_corners=False
-        )
-        tex_cond = (tex_cond / 255.0 - 0.5) * self.tex_cond_mask
-        x = self.conv_blocks(tex_cond)
-        tex_enc = x.reshape(B, 4 * 4 * 128)
-
-        geom_enc = self.geommod(face_geom.reshape(B, -1))
-
-        x = self.jointmod(th.cat([tex_enc, geom_enc], dim=1))
-        embs_mu = self.mu(x)
-        embs_logvar = self.logvar_scale * self.logvar(x)
-
-        # NOTE: the noise is only applied to the input-conditioned values
-        if self.training:
-            noise = th.randn_like(embs_mu)
-            embs = embs_mu + th.exp(embs_logvar) * noise * self.noise_std
-        else:
-            embs = embs_mu.clone()
-
-        preds = {
-            "embs": embs,
-            "embs_mu": embs_mu,
-            "embs_logvar": embs_logvar,
-            "tex_cond": tex_cond,
-        }
-        preds = {f"{self.prefix}{k}": v for k, v in preds.items()}
         return preds
 
 
@@ -786,10 +668,38 @@ class UpscaleNet(nn.Module):
         )
 
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor=upscale_factor)
-        self.apply(weights_initializer(0.2))
-        self.out_block.apply(weights_initializer(1.0))
+
+        self.apply(lambda m: la.glorot(m, 0.2))
+        la.glorot(self.out_block, 1.0)
 
     def forward(self, x):
         x = self.conv_block(x)
         x = self.out_block(x)
         return self.pixel_shuffle(x)
+
+
+class MeshVAESummary(Callable):
+
+    def __call__(
+        self, preds: Dict[str, Any], batch: Dict[str, Any]
+    ) -> Dict[str, th.Tensor]:
+
+        rgb = linear2displayBatch(preds["rgb"][:, :3])
+        rgb_gt = linear2displayBatch(batch["image"])
+        depth = preds["depth"]
+
+        mask = depth > 0.0
+        normals = (
+            255 * (1.0 - depth2normals(depth, batch["focal"], batch["princpt"])) / 2.0
+        ) * mask
+        grid_rgb = make_grid(rgb, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        grid_rgb_gt = (
+            make_grid(rgb_gt, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        )
+        grid_normals = (
+            make_grid(normals, nrow=16).permute(1, 2, 0).clip(0, 255).to(th.uint8)
+        )
+        progress_image = th.cat([grid_rgb, grid_rgb_gt, grid_normals], dim=0)
+        return {
+            "progress_image": progress_image.permute(2, 0, 1),
+        }

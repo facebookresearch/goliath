@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import torch as th
 import torch.nn.functional as thf
-from ca_body.utils import envmap
+from ca_code.utils import envmap
 
 class EnvSpinDecorator(th.nn.Module):
     def __init__(self, mod, envmap_path, envmap_dist=10000.0, env_scale=18.0, cycle=256, sigma_step=0.2, miplevel=4, ydown=False):
