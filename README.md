@@ -1,4 +1,4 @@
-# ca_code
+# Goliath
 
 Code for Codec Avatar Family
 
@@ -19,6 +19,7 @@ See `requirements.txt`/`environment.yaml`
     * `utils` - reusable utils (functions, modules w/o learnable params)
 
 - `notebooks/` - example notebooks
+- `extensions/` - CUDA extensions
 - `data/` - location of sample data and checkpoints
 
 
