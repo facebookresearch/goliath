@@ -30,6 +30,14 @@ TODO:
 
 ```
 
+### Installing extensions
+
+
+```
+cd extensions/{mvpraymarch,sgutils,utils}
+make
+```
+
 ### Training
 
 ```
