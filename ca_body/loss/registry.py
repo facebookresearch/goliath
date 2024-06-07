@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 
 import torch as th
 import torch.nn as nn
-from attrdict import AttrDict
+from addict import Dict as AttrDict
 
 logger: logging.Logger = logging.getLogger(__name__)
 

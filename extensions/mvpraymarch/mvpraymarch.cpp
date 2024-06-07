@@ -58,6 +58,7 @@ void raymarch_forward_cuda(
         float * rayrgbaim,
         float * raysatim,
         int * raytermim,
+        float * shadow,
 
         int algorithm, bool sortboxes, int maxhitboxes, bool synchitboxes,
         bool chlast, float fadescale, float fadeexp, int accum, float termthresh,
@@ -197,6 +198,7 @@ std::vector<torch::Tensor> raymarch_forward(
         torch::Tensor rayrgbaim,
         torch::optional<torch::Tensor> raysatim,
         torch::optional<torch::Tensor> raytermim,
+        torch::optional<torch::Tensor> shadow,
 
         int algorithm=0,
         bool sortboxes=true,
@@ -224,6 +226,7 @@ std::vector<torch::Tensor> raymarch_forward(
     CHECK_INPUT(rayrgbaim);
     if (raysatim) { CHECK_INPUT(*raysatim); }
     if (raytermim) { CHECK_INPUT(*raytermim); }
+    if (shadow) { CHECK_INPUT(*shadow); }
 
     int N = rayposim.size(0);
     int H = rayposim.size(1);
@@ -270,6 +273,7 @@ std::vector<torch::Tensor> raymarch_forward(
             reinterpret_cast<float *>(rayrgbaim.data_ptr()),
             raysatim ? reinterpret_cast<float *>(raysatim->data_ptr()) : nullptr,
             raytermim ? reinterpret_cast<int *>(raytermim->data_ptr()) : nullptr,
+            shadow ? reinterpret_cast<float *>(shadow->data_ptr()) : nullptr,
 
             // options
             algorithm, sortboxes, maxhitboxes, synchitboxes, chlast, fadescale, fadeexp, accum, termthresh,

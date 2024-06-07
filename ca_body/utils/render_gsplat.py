@@ -94,7 +94,8 @@ def render(
                 cam_img_w,
                 block_width,
                 bg_color,
-            )
+                return_alpha=True
+            )[0]
         depth = out_depth[..., 0]
         out["depth"] = depth[None]
 

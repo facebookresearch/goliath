@@ -142,7 +142,10 @@ def load_checkpoint(
         if ignore_names is not None and name in ignore_names:
             logger.info(f"skipping: {ignore_names[name]}")
             params = filter_params(params, ignore_names[name])
-        mod.load_state_dict(params)
+        if isinstance(mod, nn.Module):
+            mod.load_state_dict(params, strict=strict)
+        elif isinstance(mod, th.optim.Optimizer):
+            mod.load_state_dict(params)
 
 
 def train(
@@ -171,10 +174,10 @@ def train(
             continue
         batch = to_device(batch, device)
         batch["iteration"] = iteration
-        
+                
         if batch_filter_fn is not None:
             batch_filter_fn(batch)
-        
+
         # leaving only inputs acutally used by the model
         preds = model(**filter_inputs(batch, model, required_only=False))
 
@@ -183,7 +186,7 @@ def train(
 
         prev_loss = sum(loss_history) / len(loss_history)
         exploded = (
-            loss.item() > 20 * prev_loss or th.isnan(loss) or th.isinf(loss)
+            loss.item() > 10 * prev_loss or th.isnan(loss) or th.isinf(loss)
         )
         if exploded:
             logger.info(f"explosion detected: iter={iteration}: frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")

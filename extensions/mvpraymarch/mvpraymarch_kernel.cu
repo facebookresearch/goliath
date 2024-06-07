@@ -20,17 +20,23 @@
 
 #include "primtransf.h"
 #include "primsampler.h"
+#include "primsplatter.h"
 #include "primaccum.h"
 
 #include "mvpraymarch_subset_kernel.h"
 
 typedef std::shared_ptr<PrimTransfDataBase> PrimTransfDataBase_ptr;
 typedef std::shared_ptr<PrimSamplerDataBase> PrimSamplerDataBase_ptr;
+typedef std::shared_ptr<PrimSplatterDataBase> PrimSplatterDataBase_ptr;
 typedef std::shared_ptr<PrimAccumDataBase> PrimAccumDataBase_ptr;
 typedef std::function<void(dim3, dim3, cudaStream_t, int, int, int, int,
         float3*, float3*, float, float2*, int*, int2*, float3*,
+        PrimTransfDataBase_ptr, PrimSamplerDataBase_ptr, PrimSplatterDataBase_ptr,
+        PrimAccumDataBase_ptr)> mapfn_t_fwd;
+typedef std::function<void(dim3, dim3, cudaStream_t, int, int, int, int,
+        float3*, float3*, float, float2*, int*, int2*, float3*,
         PrimTransfDataBase_ptr, PrimSamplerDataBase_ptr,
-        PrimAccumDataBase_ptr)> mapfn_t;
+        PrimAccumDataBase_ptr)> mapfn_t_bwd;
 typedef RaySubsetFixedBVH<false, 512, true, PrimTransfSRT> raysubset_t;
 
 void raymarch_forward_cuda(
@@ -55,6 +61,7 @@ void raymarch_forward_cuda(
         float * rayrgbaim,
         float * raysatim,
         int * raytermim,
+        float * shadow,
 
         int algorithm,
         bool sortboxes,
@@ -81,6 +88,8 @@ void raymarch_forward_cuda(
             K * 3, (float3*)primrot, nullptr,
             K, (float3*)primscale, nullptr});
     std::shared_ptr<PrimSamplerDataBase> primsampler_data;
+    std::shared_ptr<PrimSplatterDataBase> primsplatter_data;
+
     if (algorithm == 1) {
         primsampler_data = std::make_shared<PrimSamplerTW<true>::Data>(PrimSamplerTW<true>::Data{
             PrimSamplerDataBase{},
@@ -94,13 +103,17 @@ void raymarch_forward_cuda(
             K * TD * TH * TW * 4, TD, TH, TW, tplate, nullptr,
             0, 0, 0, 0, nullptr, nullptr});
     }
+    primsplatter_data = std::make_shared<PrimSplatterTW<>::Data>(PrimSplatterTW<>::Data{
+        PrimSplatterDataBase{},
+        K * TD * TH * TW * 2, TD, TH, TW, shadow});
     std::shared_ptr<PrimAccumDataBase> primaccum_data = std::make_shared<PrimAccumAdditive::Data>(PrimAccumAdditive::Data{
             PrimAccumDataBase{},
             termthresh, H * W, W, 1, (float4*)rayrgbaim, nullptr, (float3*)raysatim});
 
-    std::map<int, mapfn_t> dispatcher = {
-        {0, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<false>, PrimAccumAdditive>)},
-        {1, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<true>, PrimAccumAdditive>)}};
+
+    std::map<int, mapfn_t_fwd> dispatcher = {
+        {0, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<false>, PrimSplatterTW<>, PrimAccumAdditive>)},
+        {1, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<true>, PrimSplatterTW<>, PrimAccumAdditive>)}};
 
     auto iter = dispatcher.find(algorithm);
     if (iter != dispatcher.end()) {
@@ -116,6 +129,7 @@ void raymarch_forward_cuda(
             reinterpret_cast<float3 *>(nodeaabb),
             primtransf_data,
             primsampler_data,
+            primsplatter_data,
             primaccum_data);
     }
 }
@@ -185,7 +199,7 @@ void raymarch_backward_cuda(
             PrimAccumDataBase{},
             termthresh, H * W, W, 1, (float4*)rayrgbaim, (float4*)grad_rayrgba, (float3*)raysatim});
 
-    std::map<int, mapfn_t> dispatcher = {
+    std::map<int, mapfn_t_bwd> dispatcher = {
         {0, make_cudacall(raymarch_subset_backward_kernel<true, 512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<false>, PrimAccumAdditive>)},
         {1, make_cudacall(raymarch_subset_backward_kernel<true, 512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<true>, PrimAccumAdditive>)}};
 

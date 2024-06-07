@@ -18,8 +18,10 @@ if __name__ == "__main__":
                 sources=["utils.cpp", "utils_kernel.cu"],
                 extra_compile_args={
                     "nvcc": [
-                        "-arch=sm_70",
-                        "-std=c++14",
+                        "-gencode=arch=compute_70,code=sm_70",
+                        "-gencode=arch=compute_80,code=sm_80",
+                        "-gencode=arch=compute_86,code=sm_86",
+                        "-std=c++17",
                         "-lineinfo",
                     ]
                 }

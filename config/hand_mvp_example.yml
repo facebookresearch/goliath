@@ -1,0 +1,84 @@
+
+# a dummy example
+sid: AXE977
+hand_side: left
+data:
+  root_path: /mnt/captures/oss/goliath/m--20230306--0839--AXE977--pilot--ProjectGoliath--Hands--${hand_side}
+  shared_assets_path: /mnt/captures/oss/goliath/shared/static_assets_hand_${hand_side}.pt
+  split: train
+  shuffle: True
+  fully_lit_only: True
+
+dataloader:
+  batch_size: 4
+  num_workers: 8
+
+model_name: hand_mvp
+
+model:
+  class_name: ca_body.models.${model_name}.AutoEncoder
+
+  n_embs: 64
+  image_height: 2048
+  image_width: 1334
+
+  cal:
+    identity_camera: 400870
+
+  learn_blur: true
+
+summary:
+  class_name: ca_body.models.${model_name}.HandMVPSummary
+
+loss:
+  class_name: ca_body.loss.ModularLoss
+  losses:
+    rgb_l2:
+      src_key: rgb
+      tgt_key: image
+      mask_key: segmentation_fgbg
+      mask_erode: 3
+      weight: 0.0016 # to account for division by 25 in the old code
+    vgg:
+      src_key: rgb
+      tgt_key: image
+      mask_key: segmentation_fgbg
+      mask_erode: 3
+      weight: 1.0
+    mask_l1:
+      weight: 10.0
+      src_key: alpha
+      tgt_key: segmentation_fgbg
+    learn_blur: 0.001
+    alphaprior: 1.0
+    primvolsum: 1.0e-4
+
+
+lr: 5.0e-4
+optimizer:
+  class_name: torch.optim.AdamW
+  per_module:
+    poseencoder:
+      lr: ${lr}
+    geomdecoder:
+      lr: ${lr}
+    rgbdecoder:
+      lr: ${lr}
+    cal:
+      lr: ${lr}
+    learn_blur:
+      lr: 0.001
+
+train:
+  tag: ${model_name}.${sid}.${hand_side}
+  run_dir: runs/${.tag}
+  tb_dir: ${.run_dir}/tb
+  ckpt_dir: ${.run_dir}/checkpoints
+
+  # CHANGE ME
+  n_max_iters: 400000
+  log_every_n_steps: 100
+  summary_every_n_steps: 1000
+  ckpt_every_n_steps: 1000
+
+  

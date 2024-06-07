@@ -4,13 +4,13 @@
 import copy
 from glob import glob
 
+from typing import Any, Mapping, Optional
+
+import numpy as np
+
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from omegaconf import DictConfig
-
-from ca_body.utils.module_loader import load_from_config, load_module
 
 from ca_body.loss.registry import (  # noqa
     get_loss,
@@ -20,13 +20,26 @@ from ca_body.loss.registry import (  # noqa
     register_loss_by_fn,  # noqa
 )
 
-from typing import Any, Mapping, Optional
+from ca_body.loss import perceptual
 
-import ca_body.loss.perceptual  # noqa
-from ca_body.utils.ssim import ssim
-
-from ca_body.loss import register_loss, register_loss_by_fn
 from ca_body.utils.image import erode
+from ca_body.utils.module_loader import load_from_config, load_module
+from ca_body.utils.ssim import ssim
+from omegaconf import DictConfig
+
+
+class StepWeightSchedule:
+    def __init__(self, start: int, end: int, value: float):
+        self.start = start
+        self.end = end
+        self.value = value
+
+    def __call__(self, iteration: int):
+        if iteration < self.start:
+            return 0.0
+        elif iteration > self.end:
+            return 0.0
+        return self.value
 
 
 class MonotonicWeightSchedule:
@@ -344,6 +357,31 @@ class MouthEyesLaplacianLoss(RegionLaplacianPenaltyLoss):
 
 @register_loss_by_fn()
 # TODO: we need to normalize this properly
+def rgb_l2(
+    preds,
+    targets,
+    src_key: str = "rendered_rgb",
+    tgt_key: str = "image",
+    mask_key: str = "image_mask",
+    ddisc_key: str = "depth_disc_mask",
+    mask_erode: Optional[int] = None,
+):
+    # TODO: should this be all defined with unique names?
+    mask = targets.get(mask_key, preds.get(mask_key, None))
+    if mask is None:
+        mask = th.ones_like(preds[src_key])
+    if mask_erode is not None:
+        mask = erode(mask.to(th.float32), mask_erode).to(th.bool)
+    if ddisc_key in preds:
+        try:
+            mask = mask * (1 - preds[ddisc_key])
+        except Exception:
+            mask = mask * ~preds[ddisc_key]
+    return ((preds[src_key] - targets[tgt_key]) * mask).pow(2).mean()
+
+
+@register_loss_by_fn()
+# TODO: we need to normalize this properly
 def rgb_l1(
     preds,
     targets,
@@ -403,12 +441,12 @@ def rgb_ssim(
     src_key: str = "rendered_rgb",
     tgt_key: str = "image",
     mask_key: str = "image_mask",
-    normalize_mask: bool = True
+    normalize_mask: bool = True,
 ):
     mask = targets.get(mask_key, preds.get(mask_key, None))
     if mask is None:
         mask = th.ones_like(preds[src_key])
-    
+
     if normalize_mask:
         return 1.0 - ssim(targets[tgt_key], preds[src_key], mask=mask)
     else:
@@ -436,12 +474,19 @@ def pose_to_shadow_l2_loss(preds, batch=None):
 
 
 @register_loss_by_fn("bound_primscale")
-def loss_bound_primscale(preds, batch=None, key: str = "primscale_preclip", min_scale: float = 0.1, max_scale: float = 20.0):
+def loss_bound_primscale(
+    preds,
+    batch=None,
+    key: str = "primscale_preclip",
+    min_scale: float = 0.1,
+    max_scale: float = 20.0,
+):
     primscale = preds[key]
     return th.where(
         primscale < min_scale,
         1.0 / primscale.clamp(1e-7, th.inf),
-        th.where(primscale > max_scale, (primscale - max_scale) ** 2, 0.0)).mean()
+        th.where(primscale > max_scale, (primscale - max_scale) ** 2, 0.0),
+    ).mean()
 
 
 @register_loss_by_fn("negcolor")
@@ -450,8 +495,9 @@ def loss_negcolor(preds, batch=None, key: str = "diff_color"):
 
 
 @register_loss_by_fn("l2_reg")
-def loss_l2_reg(preds, batch=None, key: str = "spec_nml"):
+def loss_l2_reg(preds, batch=None, key: str = "spec_dnml"):
     return preds[key].pow(2).mean()
+
 
 @register_loss_by_fn("backlit_reg")
 def loss_backlight_reg(
@@ -460,4 +506,27 @@ def loss_backlight_reg(
     key: str = "color_rand",
     cos_key: str = "cos_weight",
 ):
-    return (F.relu(-preds[cos_key]) * preds[key].clamp(min=0.0)).pow(2).mean()
+    weight = F.relu(-preds[cos_key]) ** 2
+    return (weight * F.relu(preds[key])).sum() / (1.0 + weight.sum())
+
+
+@register_loss_by_fn("primvolsum")
+def loss_primvolsum(preds, batch=None, primscale_ref: float = 100.0):
+    primscale = preds["primscale"]
+    return th.mean(th.sum(th.prod(primscale_ref / primscale, dim=-1), dim=-1))
+
+
+@register_loss_by_fn("alphaprior")
+def loss_alphaprior(
+    preds,
+    batch=None,
+    key: str = "alpha",
+):
+    alpha = preds[key]
+    B = alpha.shape[0]
+
+    return th.mean(
+        th.log(0.1 + alpha.view(B, -1))
+        + th.log(0.1 + 1.0 - alpha.view(B, -1))
+        - -2.20727
+    )

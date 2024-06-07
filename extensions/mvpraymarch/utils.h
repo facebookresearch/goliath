@@ -393,6 +393,121 @@ struct GridSampler {
     }
 };
 
+static __device__ void grid_splat_forward(
+    int C,
+    int inp_D,
+    int inp_H,
+    int inp_W,
+    float vis,
+    float* vals,
+    float3 pos,
+    bool border) {
+  int inp_sW = 1, inp_sH = inp_W, inp_sD = inp_W * inp_H, inp_sC = inp_W * inp_H * inp_D;
+
+  // normalize ix, iy, iz from [-1, 1] to [0, inp_W-1] & [0, inp_H-1] & [0, inp_D-1]
+  float ix = ((pos.x + 1.f) / 2) * (inp_W - 1);
+  float iy = ((pos.y + 1.f) / 2) * (inp_H - 1);
+  float iz = ((pos.z + 1.f) / 2) * (inp_D - 1);
+
+  if (border) {
+    // clip coordinates to image borders
+    ix = clip_coordinates(ix, inp_W);
+    iy = clip_coordinates(iy, inp_H);
+    iz = clip_coordinates(iz, inp_D);
+  }
+
+  // get corner pixel values from (x, y, z)
+  // for 4d, we used north-east-south-west
+  // for 5d, we add top-bottom
+  int ix_tnw = static_cast<int>(::floor(ix));
+  int iy_tnw = static_cast<int>(::floor(iy));
+  int iz_tnw = static_cast<int>(::floor(iz));
+
+  int ix_tne = ix_tnw + 1;
+  int iy_tne = iy_tnw;
+  int iz_tne = iz_tnw;
+
+  int ix_tsw = ix_tnw;
+  int iy_tsw = iy_tnw + 1;
+  int iz_tsw = iz_tnw;
+
+  int ix_tse = ix_tnw + 1;
+  int iy_tse = iy_tnw + 1;
+  int iz_tse = iz_tnw;
+
+  int ix_bnw = ix_tnw;
+  int iy_bnw = iy_tnw;
+  int iz_bnw = iz_tnw + 1;
+
+  int ix_bne = ix_tnw + 1;
+  int iy_bne = iy_tnw;
+  int iz_bne = iz_tnw + 1;
+
+  int ix_bsw = ix_tnw;
+  int iy_bsw = iy_tnw + 1;
+  int iz_bsw = iz_tnw + 1;
+
+  int ix_bse = ix_tnw + 1;
+  int iy_bse = iy_tnw + 1;
+  int iz_bse = iz_tnw + 1;
+
+  // get surfaces to each neighbor:
+  float tnw = (ix_bse - ix) * (iy_bse - iy) * (iz_bse - iz);
+  float tne = (ix - ix_bsw) * (iy_bsw - iy) * (iz_bsw - iz);
+  float tsw = (ix_bne - ix) * (iy - iy_bne) * (iz_bne - iz);
+  float tse = (ix - ix_bnw) * (iy - iy_bnw) * (iz_bnw - iz);
+  float bnw = (ix_tse - ix) * (iy_tse - iy) * (iz - iz_tse);
+  float bne = (ix - ix_tsw) * (iy_tsw - iy) * (iz - iz_tsw);
+  float bsw = (ix_tne - ix) * (iy - iy_tne) * (iz - iz_tne);
+  float bse = (ix - ix_tnw) * (iy - iy_tnw) * (iz - iz_tnw);
+
+  // auto inp_ptr_NC = input.data + n * inp_sN;
+  // auto out_ptr_NCDHW = output.data + n * out_sN + d * out_sD + h * out_sH + w * out_sW;
+  if (within_bounds_3d(iz_tnw, iy_tnw, ix_tnw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_tnw * inp_sD + iy_tnw * inp_sH + ix_tnw * inp_sW, tnw * vis);
+    atomicAdd(vals + iz_tnw * inp_sD + iy_tnw * inp_sH + ix_tnw * inp_sW + inp_sC, tnw);
+  }
+  if (within_bounds_3d(iz_tne, iy_tne, ix_tne, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_tne * inp_sD + iy_tne * inp_sH + ix_tne * inp_sW, tne * vis);
+    atomicAdd(vals + iz_tne * inp_sD + iy_tne * inp_sH + ix_tne * inp_sW + inp_sC, tne);
+  }
+  if (within_bounds_3d(iz_tsw, iy_tsw, ix_tsw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_tsw * inp_sD + iy_tsw * inp_sH + ix_tsw * inp_sW, tsw * vis);
+    atomicAdd(vals + iz_tsw * inp_sD + iy_tsw * inp_sH + ix_tsw * inp_sW + inp_sC, tsw);
+  }
+  if (within_bounds_3d(iz_tse, iy_tse, ix_tse, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_tse * inp_sD + iy_tse * inp_sH + ix_tse * inp_sW, tse * vis);
+    atomicAdd(vals + iz_tse * inp_sD + iy_tse * inp_sH + ix_tse * inp_sW + inp_sC, tse);
+  }
+  if (within_bounds_3d(iz_bnw, iy_bnw, ix_bnw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_bnw * inp_sD + iy_bnw * inp_sH + ix_bnw * inp_sW, bnw * vis);
+    atomicAdd(vals + iz_bnw * inp_sD + iy_bnw * inp_sH + ix_bnw * inp_sW + inp_sC, bnw);
+  }
+  if (within_bounds_3d(iz_bne, iy_bne, ix_bne, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_bne * inp_sD + iy_bne * inp_sH + ix_bne * inp_sW, bne * vis);
+    atomicAdd(vals + iz_bne * inp_sD + iy_bne * inp_sH + ix_bne * inp_sW + inp_sC, bne);
+  }
+  if (within_bounds_3d(iz_bsw, iy_bsw, ix_bsw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_bsw * inp_sD + iy_bsw * inp_sH + ix_bsw * inp_sW, bsw * vis);
+    atomicAdd(vals + iz_bsw * inp_sD + iy_bsw * inp_sH + ix_bsw * inp_sW + inp_sC, bsw);
+  }
+  if (within_bounds_3d(iz_bse, iy_bse, ix_bse, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + iz_bse * inp_sD + iy_bse * inp_sH + ix_bse * inp_sW, bse * vis);
+    atomicAdd(vals + iz_bse * inp_sD + iy_bse * inp_sH + ix_bse * inp_sW + inp_sC, bse);
+  }
+
+  return;
+}
+
+// TODO: add backward
+template <typename in_t>
+struct GridSplater {
+  static __forceinline__ __device__ void
+  forward(int C, int inp_D, int inp_H, int inp_W, float vis, float* vals, float3 pos, bool border) {
+    return grid_splat_forward(C, inp_D, inp_H, inp_W, vis, vals, pos, border);
+  }
+};
+
 //template <typename T>
 //__device__ void cswap ( T& a, T& b ) {
 //    T c(a); a=b; b=c;
@@ -651,6 +766,120 @@ struct GridSamplerChlast {
             float* vals, float* grad_vals, float3 pos, out_t grad_out, bool border) {
         return grid_sample_chlast_backward<out_t>(C, inp_D, inp_H, inp_W, vals, grad_vals, pos, grad_out, border);
     }
+};
+
+static __device__ void grid_splat_chlast_forward(
+    int,
+    int inp_D,
+    int inp_H,
+    int inp_W,
+    float vis,
+    float* vals,
+    float3 pos,
+    bool border) {
+  int inp_sW = 1, inp_sH = inp_W, inp_sD = inp_W * inp_H;
+
+  // normalize ix, iy, iz from [-1, 1] to [0, inp_W-1] & [0, inp_H-1] & [0, inp_D-1]
+  float ix = ((pos.x + 1.f) / 2) * (inp_W - 1);
+  float iy = ((pos.y + 1.f) / 2) * (inp_H - 1);
+  float iz = ((pos.z + 1.f) / 2) * (inp_D - 1);
+
+  if (border) {
+    // clip coordinates to image borders
+    ix = clip_coordinates(ix, inp_W);
+    iy = clip_coordinates(iy, inp_H);
+    iz = clip_coordinates(iz, inp_D);
+  }
+
+  // get corner pixel values from (x, y, z)
+  // for 4d, we used north-east-south-west
+  // for 5d, we add top-bottom
+  int ix_tnw = static_cast<int>(::floor(ix));
+  int iy_tnw = static_cast<int>(::floor(iy));
+  int iz_tnw = static_cast<int>(::floor(iz));
+
+  int ix_tne = ix_tnw + 1;
+  int iy_tne = iy_tnw;
+  int iz_tne = iz_tnw;
+
+  int ix_tsw = ix_tnw;
+  int iy_tsw = iy_tnw + 1;
+  int iz_tsw = iz_tnw;
+
+  int ix_tse = ix_tnw + 1;
+  int iy_tse = iy_tnw + 1;
+  int iz_tse = iz_tnw;
+
+  int ix_bnw = ix_tnw;
+  int iy_bnw = iy_tnw;
+  int iz_bnw = iz_tnw + 1;
+
+  int ix_bne = ix_tnw + 1;
+  int iy_bne = iy_tnw;
+  int iz_bne = iz_tnw + 1;
+
+  int ix_bsw = ix_tnw;
+  int iy_bsw = iy_tnw + 1;
+  int iz_bsw = iz_tnw + 1;
+
+  int ix_bse = ix_tnw + 1;
+  int iy_bse = iy_tnw + 1;
+  int iz_bse = iz_tnw + 1;
+
+  // get surfaces to each neighbor:
+  float tnw = (ix_bse - ix) * (iy_bse - iy) * (iz_bse - iz);
+  float tne = (ix - ix_bsw) * (iy_bsw - iy) * (iz_bsw - iz);
+  float tsw = (ix_bne - ix) * (iy - iy_bne) * (iz_bne - iz);
+  float tse = (ix - ix_bnw) * (iy - iy_bnw) * (iz_bnw - iz);
+  float bnw = (ix_tse - ix) * (iy_tse - iy) * (iz - iz_tse);
+  float bne = (ix - ix_tsw) * (iy_tsw - iy) * (iz - iz_tsw);
+  float bsw = (ix_tne - ix) * (iy - iy_tne) * (iz - iz_tne);
+  float bse = (ix - ix_tnw) * (iy - iy_tnw) * (iz - iz_tnw);
+
+  // out_t result = Zeros<out_t>::get();
+  if (within_bounds_3d(iz_tnw, iy_tnw, ix_tnw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_tnw * inp_sD + iy_tnw * inp_sH + ix_tnw * inp_sW) * 2 + 0, tnw * vis);
+    atomicAdd(vals + (iz_tnw * inp_sD + iy_tnw * inp_sH + ix_tnw * inp_sW) * 2 + 1, tnw);
+  }
+  if (within_bounds_3d(iz_tne, iy_tne, ix_tne, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_tne * inp_sD + iy_tne * inp_sH + ix_tne * inp_sW) * 2 + 0, tne * vis);
+    atomicAdd(vals + (iz_tne * inp_sD + iy_tne * inp_sH + ix_tne * inp_sW) * 2 + 1, tne);
+  }
+  if (within_bounds_3d(iz_tsw, iy_tsw, ix_tsw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_tsw * inp_sD + iy_tsw * inp_sH + ix_tsw * inp_sW) * 2 + 0, tsw * vis);
+    atomicAdd(vals + (iz_tsw * inp_sD + iy_tsw * inp_sH + ix_tsw * inp_sW) * 2 + 1, tsw);
+  }
+  if (within_bounds_3d(iz_tse, iy_tse, ix_tse, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_tse * inp_sD + iy_tse * inp_sH + ix_tse * inp_sW) * 2 + 0, tse * vis);
+    atomicAdd(vals + (iz_tse * inp_sD + iy_tse * inp_sH + ix_tse * inp_sW) * 2 + 1, tse);
+  }
+  if (within_bounds_3d(iz_bnw, iy_bnw, ix_bnw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_bnw * inp_sD + iy_bnw * inp_sH + ix_bnw * inp_sW) * 2 + 0, bnw * vis);
+    atomicAdd(vals + (iz_bnw * inp_sD + iy_bnw * inp_sH + ix_bnw * inp_sW) * 2 + 1, bnw);
+  }
+  if (within_bounds_3d(iz_bne, iy_bne, ix_bne, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_bne * inp_sD + iy_bne * inp_sH + ix_bne * inp_sW) * 2 + 0, bne * vis);
+    atomicAdd(vals + (iz_bne * inp_sD + iy_bne * inp_sH + ix_bne * inp_sW) * 2 + 1, bne);
+  }
+  if (within_bounds_3d(iz_bsw, iy_bsw, ix_bsw, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_bsw * inp_sD + iy_bsw * inp_sH + ix_bsw * inp_sW) * 2 + 0, bsw * vis);
+    atomicAdd(vals + (iz_bsw * inp_sD + iy_bsw * inp_sH + ix_bsw * inp_sW) * 2 + 1, bsw);
+  }
+  if (within_bounds_3d(iz_bse, iy_bse, ix_bse, inp_D, inp_H, inp_W)) {
+    atomicAdd(vals + (iz_bse * inp_sD + iy_bse * inp_sH + ix_bse * inp_sW) * 2 + 0, bse * vis);
+    atomicAdd(vals + (iz_bse * inp_sD + iy_bse * inp_sH + ix_bse * inp_sW) * 2 + 1, bse);
+  }
+
+  return;
+}
+
+// TODO: add backward
+template <typename out_t>
+struct GridSplatterChlast {
+  static __forceinline__ __device__ void
+  forward(int C, int inp_D, int inp_H, int inp_W, float vis, float* vals, float3 pos, bool border) {
+    return grid_splat_chlast_forward(C, inp_D, inp_H, inp_W, vis, vals, pos, border);
+  }
 };
 
 

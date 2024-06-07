@@ -9,7 +9,7 @@ import os
 import sys
 from omegaconf import OmegaConf, DictConfig
 
-from attrdict import AttrDict
+from addict import Dict as AttrDict
 
 from torch.utils.tensorboard import SummaryWriter
 

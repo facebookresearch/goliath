@@ -1,8 +1,9 @@
 
 # a dummy example
+sid: AXE977
+
 data:
   root_path: /mnt/captures/oss/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
-  # root_path: data_tmp/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody
   shared_assets_path: /mnt/captures/oss/goliath/shared/static_assets_head.pt
   split: train
   shuffle: True
@@ -60,7 +61,12 @@ loss:
         end: 10000
         init_value: 1.0
         target_value: 0.0
-
+    backlit_reg:
+      schedule:
+        class_name: ca_body.loss.StepWeightSchedule
+        start: 500000
+        end: 600000
+        value: 1.0
     bound_primscale: 1e-2
     negcolor: 1e-2
     learn_blur: 0.001
@@ -83,13 +89,13 @@ optimizer:
       lr: 0.001
 
 train:
-  tag: ${model_name}.AXE977
+  tag: ${model_name}.${sid}
   run_dir: runs/${.tag}
   tb_dir: ${.run_dir}/tb
   ckpt_dir: ${.run_dir}/checkpoints
 
   # CHANGE ME
-  n_max_iters: 200000
+  n_max_iters: 600000
   log_every_n_steps: 10
   summary_every_n_steps: 1000
   ckpt_every_n_steps: 1000

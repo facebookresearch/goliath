@@ -19,7 +19,9 @@ if __name__ == "__main__":
                 extra_compile_args={
                     "nvcc": [
                         "-use_fast_math",
-                        "-arch=sm_70",
+                        "-gencode=arch=compute_70,code=sm_70",
+                        "-gencode=arch=compute_80,code=sm_80",
+                        "-gencode=arch=compute_86,code=sm_86",
                         "-std=c++17",
                         "-lineinfo",
                     ]

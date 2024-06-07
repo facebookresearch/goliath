@@ -44,7 +44,7 @@ struct PrimSamplerTW {
     __forceinline__ __device__ float4 forward(
             const Data & data,
             int k,
-            float3 y0) {
+            float3& y0) {
         fade = __expf(-data.fadescale * (
                     __powf(abs(y0.x), data.fadeexp) +
                     __powf(abs(y0.y), data.fadeexp) +
@@ -61,6 +61,7 @@ struct PrimSamplerTW {
         float4 sample = GridSamplerT<float4>::forward(4, data.TD, data.TH, data.TW, tplate_ptr, yy1, false);
 
         sample.w *= fade;
+        y0 = yy1;
 
         return sample;
     }

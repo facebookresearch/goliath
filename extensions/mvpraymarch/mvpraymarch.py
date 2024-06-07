@@ -103,6 +103,7 @@ class MVPRaymarch(Function):
         accum = options["accum"]
         termthresh = options["termthresh"]
         griddim = options["griddim"]
+        with_shadow = options["with_shadow"]
         if isinstance(options["blocksize"], tuple):
             blocksizex, blocksizey = options["blocksize"]
         else:
@@ -151,6 +152,22 @@ class MVPRaymarch(Function):
             raysat = None
             rayterm = None
 
+        shadow = None
+        if with_shadow:
+            if chlast:
+                N, P, D, H, W, C = template.shape
+                shadow = torch.full(
+                    (N, P, D, H, W, 2), 0, device=template.device, dtype=torch.float32
+                )
+            else:
+                N, P, C, D, H, W = template.shape
+                shadow = torch.full(
+                    (N, P, 2, D, H, W),
+                    0,
+                    device=template.device,
+                    dtype=torch.float32,
+                )
+
         mvpraymarchlib.raymarch_forward(
             raypos,
             raydir,
@@ -165,6 +182,7 @@ class MVPRaymarch(Function):
             rayrgba,
             raysat,
             rayterm,
+            shadow,
             algo,
             sortprims,
             maxhitboxes,
@@ -198,10 +216,10 @@ class MVPRaymarch(Function):
         self.options = options
         self.stepsize = stepsize
 
-        return rayrgba
+        return rayrgba, shadow
 
     @staticmethod
-    def backward(self, grad_rayrgba):
+    def backward(self, grad_rayrgba, grad_shadow):
         (
             raypos,
             raydir,
@@ -310,11 +328,12 @@ def mvpraymarch(
     chlast=True,
     fadescale=8.0,
     fadeexp=8.0,
-    accum=0,
-    termthresh=0.0,
+    accum=2,
+    termthresh=0.99,
     griddim=3,
     blocksize=(8, 16),
     bwdblocksize=(8, 16),
+    with_shadow=False,
 ):
     """Main entry point for raymarching MVP.
 
@@ -360,7 +379,7 @@ def mvpraymarch(
         )
     primtransfin = (primpos, primrot, primscale)
 
-    out = MVPRaymarch.apply(
+    out, shadow = MVPRaymarch.apply(
         raypos,
         raydir,
         stepsize,
@@ -385,9 +404,18 @@ def mvpraymarch(
             "griddim": griddim,
             "blocksize": blocksize,
             "bwdblocksize": bwdblocksize,
+            "with_shadow": with_shadow,
         }
     )
-    return out
+    if with_shadow:
+        assert shadow is not None
+        if chlast:
+            shadow = shadow[..., 0:1] / (shadow[..., 1:] + 1e-5)
+        else:
+            shadow = shadow[:, :, 0:1] / (shadow[:, :, 1:] + 1e-5)
+        return out, shadow
+    else:
+        return out
 
 
 class Rodrigues(nn.Module):
@@ -693,6 +721,7 @@ def gradcheck(
             griddim=griddim,
             blocksize=blocksize,
             bwdblocksize=bwdblocksize,
+            with_shadow=False,
         )
         t1 = time.time()
         torch.cuda.synchronize()

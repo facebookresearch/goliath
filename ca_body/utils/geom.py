@@ -9,22 +9,23 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 from typing import Optional
+
 import numpy as np
 import torch as th
-import torch.nn.functional as F
 import torch.nn as nn
+import torch.nn.functional as F
 
 from sklearn.neighbors import KDTree
 
-import logging
-
 logger = logging.getLogger(__name__)
+
+from typing import Optional, Tuple, Union
 
 # NOTE: we need pytorch3d primarily for UV rasterization things
 from pytorch3d.renderer.mesh.rasterize_meshes import rasterize_meshes
 from pytorch3d.structures import Meshes
-from typing import Union, Optional, Tuple
 
 
 def make_uv_face_index(
@@ -210,8 +211,8 @@ class GeometryModule(nn.Module):
         self.register_buffer("vi", th.as_tensor(vi))
         self.register_buffer("vt", th.as_tensor(vt))
         self.register_buffer("vti", th.as_tensor(vti))
-        
-        # NOTE: seems irrelevant for head        
+
+        # NOTE: seems irrelevant for head
         if v2uv is not None:
             self.register_buffer("v2uv", th.as_tensor(v2uv, dtype=th.int64))
 
@@ -224,6 +225,7 @@ class GeometryModule(nn.Module):
         index_image = make_uv_vert_index(
             self.vt, self.vi, self.vti, uv_shape=uv_size, flip_uv=flip_uv
         ).cpu()
+        valid_mask = index_image[..., :1] != -1
         face_index, bary_image = make_uv_barys(
             self.vt, self.vti, uv_shape=uv_size, flip_uv=flip_uv
         )
@@ -241,6 +243,7 @@ class GeometryModule(nn.Module):
                 face_index, distance_threshold=impaint_threshold
             )
 
+        self.register_buffer("valid_mask", valid_mask.cpu())
         self.register_buffer("index_image", index_image.cpu())
         self.register_buffer("bary_image", bary_image.cpu())
         self.register_buffer("face_index_image", face_index.cpu())
@@ -388,8 +391,41 @@ def compute_tbn(geom, vt, vi, vti):
         dim=-1,
     )
     tangent = F.normalize(tangent, dim=-1)
-    normal = F.normalize(th.cross(v01, v02, dim=3), dim=-1)
-    bitangent = F.normalize(th.cross(tangent, normal, dim=3), dim=-1)
+    normal = F.normalize(th.cross(v01, v02, dim=-1), dim=-1)
+    bitangent = F.normalize(th.cross(tangent, normal, dim=-1), dim=-1)
+
+    return tangent, bitangent, normal
+
+
+def compute_tbn_uv(tri_xyz, tri_uv):
+    """Compute tangents, bitangents, normals.
+
+    Args:
+        tri_xyz: [B,N,3,3] vertex coordinates
+        tri_uv: [N,2] texture coordinates
+
+    Returns:
+        tangents, bitangents, normals
+    """
+
+    tri_uv = tri_uv[None]
+
+    v01 = tri_xyz[:, :, 1] - tri_xyz[:, :, 0]
+    v02 = tri_xyz[:, :, 2] - tri_xyz[:, :, 0]
+
+    normal = F.normalize(th.cross(v01, v02, dim=-1), dim=-1)
+
+    vt01 = tri_uv[:, :, 1] - tri_uv[:, :, 0]
+    vt02 = tri_uv[:, :, 2] - tri_uv[:, :, 0]
+
+    f = 1.0 / (vt01[..., 0] * vt02[..., 1] - vt01[..., 1] * vt02[..., 0])
+
+    tangent = f[..., None] * (
+        v01 * vt02[..., 1][..., None] - v02 * vt01[..., 1][..., None]
+    )
+    tangent = F.normalize(tangent, dim=-1)
+
+    bitangent = F.normalize(th.cross(normal, tangent, dim=-1), dim=-1)
 
     return tangent, bitangent, normal
 
@@ -556,6 +592,37 @@ def project_points_multi(p, Rt, K, normalize=False, size=None):
     return p_pix, p_depth
 
 
+def get_rays_perspective(
+    H,
+    W,
+    camrot: th.Tensor,
+    focal: th.Tensor,
+    princpt: th.Tensor,
+) -> th.Tensor:
+    """Convert screen coordinates to ray directions from camera
+    Args:
+        ray_ids: the x,y coordinates,  # b x h x w x 2
+        camrot,  # b x 3 x 3
+        focal,  # b x 2 x 2
+        princpt,  # b x 2
+    """
+    device = camrot.device
+    dtype = camrot.dtype
+    x, y = th.meshgrid(
+        th.arange(W, device=device, dtype=dtype),
+        th.arange(H, device=device, dtype=dtype),
+        indexing="xy",
+    )
+    xy = th.stack([x, y], axis=-1)[None]
+    p = (xy - princpt[:, None, None, :]) / th.diagonal(focal, 0, 1, 2)[:, None, None, :]
+    ones = th.ones(*p.shape[:-1], 1, device=xy.device)
+    d = th.cat([p, ones], dim=3)
+    norm = th.norm(d, dim=3, keepdim=True)
+    d = d / norm
+    d = th.sum(th.transpose(camrot, 1, 2)[:, None, None] * d[:, :, :, None, :], dim=4)
+    return d  # b x h x w x 3
+
+
 def xyz2normals(xyz: th.Tensor, eps: float = 1e-8) -> th.Tensor:
     """Convert XYZ image to normal image
 
@@ -635,6 +702,30 @@ def depth2normals(depth, focal, princpt) -> th.Tensor:
     return xyz2normals(depth2xyz(depth, focal, princpt))
 
 
+def depth2xyz_world(depth, camrot, campos, focal, princpt) -> th.Tensor:
+    """Convert depth image to XYZ image using camera intrinsics
+
+    Args:
+        depth: th.Tensor
+        [B, 1, H, W] depth image
+
+        focal: th.Tensor
+        [B, 2, 2] camera focal lengths
+
+        princpt: th.Tensor
+        [B, 2] camera principal points
+
+    Returns:
+        th.Tensor: [B, 3, H, W] X
+    """
+    xyz_cam = depth2xyz(depth, focal, princpt)
+
+    cam_inv = th.inverse(camrot)
+    prev_shape = xyz_cam.shape
+    depthxyz = th.bmm(cam_inv, xyz_cam.view(xyz_cam.shape[0], xyz_cam.shape[1], -1))
+    return (depthxyz + campos[:, :, None]).view(prev_shape)
+
+
 def depth_discontuity_mask(
     depth: th.Tensor, threshold: float = 40.0, kscale: float = 4.0, pool_ksize: int = 3
 ) -> th.Tensor:
@@ -662,3 +753,41 @@ def depth_discontuity_mask(
         )
 
     return disc_mask
+
+
+def vertex_tn(
+    face_tangents: th.Tensor,
+    face_normals: th.Tensor,
+    vi: th.Tensor,
+    nv: int,
+    eps: float = 1.0e-5,
+) -> th.Tensor:
+    B = face_tangents.shape[0]
+
+    face_tangents = face_tangents[:, :, None].expand(-1, -1, 3, -1).reshape(B, -1, 3)
+    face_normals = face_normals[:, :, None].expand(-1, -1, 3, -1).reshape(B, -1, 3)
+
+    vi_flat = vi.view(1, -1).expand(B, -1)
+    vertex_tangents = th.zeros(
+        B, nv, 3, dtype=face_tangents.dtype, device=face_tangents.device
+    )
+    vertex_normals = th.zeros(
+        B, nv, 3, dtype=face_tangents.dtype, device=face_tangents.device
+    )
+    for j in range(3):
+        vertex_tangents[..., j].scatter_add_(1, vi_flat, face_tangents[..., j])
+        vertex_normals[..., j].scatter_add_(1, vi_flat, face_normals[..., j])
+
+    vertex_tangents = F.normalize(vertex_tangents, dim=-1, eps=1e-6)
+    vertex_normals = F.normalize(vertex_normals, dim=-1, eps=1e-6)
+
+    # Re-orthogonalization
+    # T = normalize(T - dot(T, N) * N);
+    vertex_tangents = F.normalize(
+        vertex_tangents
+        - (vertex_tangents * vertex_normals).sum(dim=-1, keepdim=True) * vertex_normals,
+        dim=-1,
+        eps=1e-6,
+    )
+
+    return vertex_tangents, vertex_normals

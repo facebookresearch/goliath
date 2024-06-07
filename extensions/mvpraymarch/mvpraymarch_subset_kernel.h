@@ -10,6 +10,7 @@ template<
     class RaySubsetT=RaySubsetFixedBVH<false, 512, true, PrimTransfSRT>,
     class PrimTransfT=PrimTransfSRT,
     class PrimSamplerT=PrimSamplerTW<false>,
+    class PrimSplatterT=PrimSplatterTW<>,
     class PrimAccumT=PrimAccumAdditive>
 __global__ void raymarch_subset_forward_kernel(
         int N, int H, int W, int K,
@@ -22,11 +23,13 @@ __global__ void raymarch_subset_forward_kernel(
         float3 * nodeaabb,
         typename PrimTransfT::Data primtransf_data,
         typename PrimSamplerT::Data primsampler_data,
+        typename PrimSplatterT::Data primsplatter_data,
         typename PrimAccumT::Data primaccum_data
         ) {
     int w = blockIdx.x * blockDim.x + threadIdx.x;
     int h = blockIdx.y * blockDim.y + threadIdx.y;
     int n = blockIdx.z;
+    // typename PrimSplatterT::Data a;
 
     assert(nwarps == 0 || blockDim.x * blockDim.y / 32 <= nwarps);
     const int warpid = __shfl_sync(0xffffffff, (threadIdx.y * blockDim.x + threadIdx.x) / 32, 0);
@@ -44,6 +47,9 @@ __global__ void raymarch_subset_forward_kernel(
 
     primtransf_data.n_stride(n);
     primsampler_data.n_stride(n);
+    if (primsplatter_data.shadow){
+        primsplatter_data.n_stride(n);
+    }
     primaccum_data.n_stride(n, h, w);
 
     float3 raypos = rayposim[n * H * W + h * W + w];
@@ -85,6 +91,12 @@ __global__ void raymarch_subset_forward_kernel(
                 // sample
                 PrimSamplerT ps;
                 float4 sample = ps.forward(primsampler_data, k, samplepos);
+
+                // shadow splatting
+                if (primsplatter_data.shadow) {
+                    PrimSplatterT psp;
+                    psp.forward(primsplatter_data, k, samplepos, pa.rayrgba.w);
+                }
 
                 // accumulate
                 pa.forward_prim(primaccum_data, sample, stepsize);

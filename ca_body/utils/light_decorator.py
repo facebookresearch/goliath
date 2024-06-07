@@ -145,7 +145,12 @@ class SingleLightCycleDecorator(th.nn.Module):
 
         for i in range(batch_size):
             index = data["index"][i] % self.cycle
-            headpose = data["head_pose"][i].data.cpu().numpy()
+            trans = None
+            if "head_pose" in data:
+                trans = data["head_pose"][i].data.cpu().numpy()[:3, 3]
+            elif "pose" in data:
+                trans = data["pose"][i, :3].data.cpu().numpy()
+                
 
             angle = (abs(index) / self.cycle) * 2 * np.pi
             if self.light_rotate_axis == 0:
@@ -158,7 +163,9 @@ class SingleLightCycleDecorator(th.nn.Module):
                 cur_lpos = np.asarray([1100.0 * np.cos(angle), 1100.0 * np.sin(angle), 0.0]
                     ).astype(np.float32)
 
-            cur_lpos = 1100.0 * cur_lpos / np.linalg.norm(cur_lpos) + headpose[:3, 3]
+            cur_lpos = 1100.0 * cur_lpos / np.linalg.norm(cur_lpos)
+            if trans is not None:
+                cur_lpos += trans
 
             cur_lpos = th.from_numpy(cur_lpos).to(device)
             light_pos.append(cur_lpos)
