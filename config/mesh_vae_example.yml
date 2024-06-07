@@ -1,15 +1,15 @@
+# by default assuming this is being run in `goliath/`
+root_dir: ./
 
-# a dummy example
 data:
-  # root_path: /mnt/captures/oss/goliath/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody/
-  root_path: data_tmp/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody
-  shared_assets_path: data_tmp/shared/static_assets.pt
+  root_path: ${root_dir}/data/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody
+  shared_assets_path: ${root_dir}/data/shared/static_assets_body.pt
   split: train
   shuffle: True
 
 dataloader:
   batch_size: 4
-  num_workers: 4
+  num_workers: 8
 
 model_name: mesh_vae
 
@@ -169,5 +169,6 @@ train:
   # CHANGE ME
   n_max_iters: 10000
   log_every_n_steps: 5
-  summary_every_n_steps: 10
+  summary_every_n_steps: 50
   ckpt_every_n_steps: 1000
+  clip_grad_norm: 1.0

@@ -255,7 +255,20 @@ class BodyDataset(IterableDataset):
             return vertices  # Polygon(vertices=vertices, faces=faces)
 
     @lru_cache(maxsize=1)
-    def load_template_mesh_unscaled(self) -> torch.Tensor:  # Polygon:
+
+    def load_floor_transforms(self) -> np.ndarray:
+        floor_transform_path = self.root_path / "floor_transformation.txt"
+        cam2gp = np.loadtxt(floor_transform_path, dtype=np.float64)
+        assert cam2gp.shape == (3, 4)
+        cam2gp = np.vstack([cam2gp, np.array([0, 0, 0, 1])])
+        gp2cam = np.linalg.inv(cam2gp)
+        return {
+            "floor_Rt": gp2cam,
+            "floor_Rt_inv": cam2gp,
+        }
+
+    @lru_cache(maxsize=1)
+    def load_template_mesh_unscaled(self) -> Polygon:
         mesh_path = self.root_path / "kinematic_tracking" / "template_mesh_unscaled.ply"
         with open(mesh_path, "rb") as f:
             vertices, faces = load_ply(f)
@@ -408,12 +421,14 @@ class BodyDataset(IterableDataset):
         ambient_occlusion_mean = self.load_ambient_occlusion_mean()
         color_mean = self.load_color_mean()
         krt = self.get_camera_calibration()
+        floor_trasnforms = self.load_floor_transforms()
         return {
             "camera_ids": list(krt.keys()),
             "template_mesh": template_mesh,
             "skeleton_scales": skeleton_scales,
             "ambient_occlusion_mean": ambient_occlusion_mean / 255.0,
             "color_mean": color_mean,
+            **floor_trasnforms,
         }
 
     def _static_get_for_head(self) -> Dict[str, Any]:
