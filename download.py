@@ -29,6 +29,7 @@ BPATH = "http://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/go
 def load_links(links_path: Union[str, Path]) -> List[str]:
     with open(links_path, "r") as f:
         links = f.readlines()  
+    links = [link.strip() for link in links]
     return links
 
 
