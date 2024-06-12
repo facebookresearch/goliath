@@ -102,8 +102,6 @@ def main():
         
         links_and_paths.append((from_url, to_path))
 
-    exit()
-
     # Done creating links, donwload everything
     total_links = len(links_and_paths)
     links_and_paths = [(i + 1, total_links, link, path) for i, (link, path) in enumerate(links_and_paths)]
