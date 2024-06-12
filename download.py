@@ -22,7 +22,8 @@ from urllib.error import HTTPError, URLError
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-BPATH = "https://s3.us-west-2.amazonaws.com/codec-avatars-oss/goliath-4/4TB/"
+# BPATH = "https://s3.us-west-2.amazonaws.com/codec-avatars-oss/goliath-4/4TB/"
+BPATH = "https://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/goliath/4TB/"
 
 
 def load_links(links_path: Union[str, Path]) -> List[str]:
@@ -64,7 +65,7 @@ def download_links(links_and_paths: List[Tuple[int, int, str, str]]) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Download the goliath dataset")
-    parser.add_argument("--links-file", type=str, default="signed_10.txt", help="CSV file with captures to download")
+    parser.add_argument("--links-file", type=str, default="links.txt", help="CSV file with captures to download")
     parser.add_argument("--output-dir", "-o", type=str, help=f"Directory to write the dataset to", required=True)
     parser.add_argument("-n", type=int, default=7645, help="Number of links to download from links-file")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
@@ -94,16 +95,14 @@ def main():
 
     # TODO(julieta) check that these are valid captures, sid mcd and mct are there
     for link in links:
-        from_url = link
+        from_url = BPATH + link
+        to_path = output_dir / link
 
-        # NOTE(julieta) Parse url to infer destination path
-        unsigned_url = from_url.split("?X-Amz-Algorithm")[0]
-        raw_path = unsigned_url[len(BPATH):]
-        to_path = output_dir / raw_path
-        print(to_path)
+        print(from_url, to_path)
         
         links_and_paths.append((from_url, to_path))
 
+    exit()
 
     # Done creating links, donwload everything
     total_links = len(links_and_paths)
