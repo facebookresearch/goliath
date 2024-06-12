@@ -23,7 +23,7 @@ from urllib.error import HTTPError, URLError
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # BPATH = "https://s3.us-west-2.amazonaws.com/codec-avatars-oss/goliath-4/4TB/"
-BPATH = "https://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/goliath/4TB/"
+BPATH = "http://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/goliath/4TB/"
 
 
 def load_links(links_path: Union[str, Path]) -> List[str]:
