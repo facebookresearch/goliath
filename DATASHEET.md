@@ -2,7 +2,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 > Gebru, Timnit, et al. "Datasheets for datasets." Communications of the ACM 64.12 (2021): 86-92.
 
-# Ava-256 Dataset
+# Goliath-4 Dataset
 
 <!-- TODO(julieta) add brief summary here, bibtex -->
 
@@ -11,7 +11,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 1. **For what purpose was the dataset created?** *(Was there a specific task in mind? Was there a specific gap that needed to be filled? Please provide a description.)*
 
-    This dataset was created to to facilitate the study of both (1) complete avatars -- that is, avatars that encompass the full body, and (2) generalizable avatars, or avatars that can be built from lower-quality, but more accessible captures.
+    This dataset was created to facilitate the study of both (1) complete avatars -- that is, avatars that encompass the full body with high quality clothes and underlying body shape, and (2) generalizable avatars, or avatars that can be built from lower-quality, but more accessible captures.
 
 
 
@@ -39,15 +39,24 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
     Each instance comprises eight captures of the same person:
     1. a relightable capture of their head,
-    1. a relightable capture of their hands,
-    1. a full body capture with regular clothing.
-    1. a full body capture with minimal clothing.
+    2. a relightable capture of their hands,
+    3. a full body capture with regular clothing,
+    4. a full body capture with minimal clothing,
 
-    As well as mobile phone scans performed by the subjects comprising their heads, hands, and with regular and minimal clothing.
+    As well as
+    5. a mobile phone scan of their head,
+    6. a mobile phone scan of thir hands,
+    7. a mobile phone scan of their full body with regular clothing,
+    8. a mobile phone scan of their full body with minimal clothing.
+
+    All the phone captures are performed by the subjects themselves.
+
+
 
 2. **How many instances are there in total (of each type, if appropriate)?**
 
-    Our dataset constains 4 subjcets, each containing all eight capture types described above.
+    Our dataset constains 4 subjects, each containing all eight capture types described above.
+
 
 3. **Does the dataset contain all possible instances or is it a sample (not necessarily random) of instances from a larger set?** *(If the dataset is a sample, then what is the larger set? Is the sample representative of the larger set (e.g., geographic coverage)? If so, please describe how this representativeness was validated/verified. If it is not representative of the larger set, please describe why not (e.g., to cover a more diverse range of instances, because instances were withheld or unavailable).)*
 
@@ -134,7 +143,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 18. **How was the data associated with each instance acquired?** *(Was the data directly observable (e.g., raw text, movie ratings), reported by subjects (e.g., survey responses), or indirectly inferred/derived from other data (e.g., part-of-speech tags, model-based guesses for age or language)? If data was reported by subjects or indirectly inferred/derived from other data, was the data validated/verified? If so, please describe how.)*
 
-    The subjects were captured in a small high resolution dome with controllable lights, and in a larger dome for full-body captures.
+    The subjects were captured in a small high resolution dome with controllable lights, in a larger dome for full-body captures, and with a mobile phone for the phone captures.
 
 
 19. **What mechanisms or procedures were used to collect the data (e.g., hardware apparatus or sensor, manual human curation, software program, software API)?** *(How were these mechanisms or procedures validated?)*
@@ -216,7 +225,11 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 1. **Was any preprocessing/cleaning/labeling of the data done (e.g., discretization or bucketing, tokenization, part-of-speech tagging, SIFT feature extraction, removal of instances, processing of missing values)?** *(If so, please provide a description. If not, you may skip the remainder of the questions in this section.)*
 
-    TODO talk about temporal and spatial downsampling, compression.
+    To reduce the storage requirements of the dataset, we did the following:
+
+    * Images were downsampled to 2048 x 1334 resolution.
+    Compressing the RGB images with lossy avif compression at quality level 63.
+    * Subsampling the frames temporal so that each hand, minimally clothed, regularly clothed and head capture has roughly 10,000 training frames, resulting in 5, 5, 10 and 10 frames per second respectively.
 
 
 1. **Was the "raw" data saved in addition to the preprocessed/cleaned/labeled data (e.g., to support unanticipated future uses)?** *(If so, please provide a link or other access point to the "raw" data.)*
@@ -247,7 +260,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
     * relightable head avatars based on relightable Gaussian splatting,
     * relightable hand avatars based on relightable volumetric primitives,
     * full body avatars with regular clothes, and
-    * full-body avatasr with minimal clothes, bot based on dynamic meshes with neural textures.
+    * full-body avatars with minimal clothes, both based on dynamic meshes with neural textures.
 
 
 36. **Is there a repository that links to any or all papers or systems that use the dataset?** *(If so, please provide a link or other access point.)*
