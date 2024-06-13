@@ -67,7 +67,159 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 4. **What data does each instance consist of?** *(``Raw'' data (e.g., unprocessed text or images)or features? In either case, please provide a description.)*
 
-    TODO(julieta)
+    ```
+    m--{capture.mcd}--{capture.mct}--{capture.sid}--pilot--ProjectGoliath--iPhone
+    ├── Hands
+    │   ├── {side}
+    │   │   ├── calib.txt
+    │   │   ├── depth.xyz
+    │   │   ├── depth.zip
+    │   │   ├── keypoints_2d.zip
+    │   │   ├── mano.zip
+    │   │   ├── rgb.mov
+    │   │   ├── rgb.zip
+    │   │   └── segmentations_fgbg.zip
+    │   ├── camera_calibration.txt
+    │   ├── frame_list.txt
+    │   ├── frame_list_test.txt
+    │   ├── frame_list_train.txt
+    │   └── visualization.mp4
+    ├── Heads
+    │   ├── {segment}
+    │   │   ├── calib.txt
+    │   │   ├── depth.mov
+    │   │   ├── depth.zip
+    │   │   ├── keypoints_2d.zip
+    │   │   ├── rgb.mov
+    │   │   ├── rgb.zip
+    │   │   └── segmentations_fgbg.zip
+    │   ├── camera_calibration.txt
+    │   ├── frame_list.txt
+    │   └── visualization.mp4
+    └── {cloth}
+        ├── calib.txt
+        ├── depth.xyz
+        ├── front.HEIC
+        ├── handheld.mov
+        ├── side.HEIC
+        └── staticphone.mov
+
+    m--{capture.mcd}--{capture.mct}--{capture.sid}--pilot--ProjectGoliath--Head
+    ├── camera_calibration.json
+    ├── frame_segments_list.csv
+    ├── frame_splits_list.csv
+    ├── head_pose
+    │   └── head_pose.zip
+    ├── image
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    ├── keypoints_3d
+    │   └── keypoints_3d.zip
+    ├── kinematic_tracking
+    │   ├── registration_vertices.zip
+    │   ├── registration_vertices_mean.npy
+    │   ├── registration_vertices_variance.txt
+    │   └── template_mesh.obj
+    ├── lights
+    │   ├── light_pattern_metadata.json
+    │   └── light_pattern_per_frame.json
+    ├── model
+    │   ├── config.yml
+    │   └── model.pt
+    ├── per_view_background
+    │   └── per_view_background.zip
+    ├── scan_mesh
+    │   └── scan_mesh.zip
+    ├── segmentation_parts
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    └── uv_image
+        ├── color.zip
+        ├── color_mean.png
+        └── color_variance.txt
+
+    m--{capture.mcd}--{capture.mct}--{capture.sid}--pilot--ProjectGoliath--Hands--{capture.side}
+    ├── camera_calibration.json
+    ├── frame_segments_list.csv
+    ├── frame_splits_list.csv
+    ├── image
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    ├── keypoints_3d
+    │   └── keypoints_3d.zip
+    ├── kinematic_tracking
+    │   ├── pose.zip
+    │   ├── registration_vertices.zip
+    │   ├── skeleton_scales.txt
+    │   ├── template_mesh.ply
+    │   └── template_mesh_unscaled.ply
+    ├── lights
+    │   ├── light_pattern_metadata.json
+    │   └── light_pattern_per_frame.json
+    ├── per_view_background
+    │   └── per_view_background.zip
+    ├── scan_mesh
+    │   └── scan_mesh.zip
+    ├── segmentation_fgbg
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    ├── segmentation_parts
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    └── uv_image
+        ├── ambient_occlusion.zip
+        └── ambient_occlusion_mean.png
+
+    s--{capture.mcd}--{capture.mct}--{capture.sid}--pilot--ProjectGoliath--{capture.clothes}Body
+    ├── camera_calibration.json
+    ├── config.yml
+    ├── floor_transformation.txt
+    ├── frame_segments_list.csv
+    ├── frame_splits_list.csv
+    ├── image
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    ├── keypoints_3d
+    │   └── keypoints_3d.zip
+    ├── kinematic_tracking
+    │   ├── pose.zip
+    │   ├── registration_vertices.zip
+    │   ├── skeleton_scales.txt
+    │   └── template_mesh.ply
+    ├── scan_mesh
+    │   └── scan_mesh.zip
+    ├── segmentation_parts
+    │   ├── cam{cam_name_01}.zip
+    │   ├── cam{cam_name_02}.zip
+    │   ├── ...
+    │   └── cam{cam_name_N}.zip
+    └── uv_image
+        ├── ambient_occlusion.zip
+        ├── ambient_occlusion_mean.png
+        └── color_mean.png
+    ```
+
+
+    There are four subjects with different `capture.sid`. Each of them has six different folders corresponding to two full body captures with `{capture.clothes}` being Clothed or Minimal, two hand captures with `{capture.side}` being left or right, one head capture, and one folder corresponding to iPhone data.
+
+    The iPhone data folder contains four subfolders, corresponding to head, hand, minimal clothing and regular clothing:
+    * Full body folders only contain raw assets, including calibration `calib.txt` (with intrinsic matrix, and image sizes for RGB and depth), raw depth video `depth.xyz` (zlib compressed), front and side images, and videos captured by swinging a phone around the body `handheld.mov`, and placing the phone on a tripod `staticphone.mov`
+    * Hands data contains a Right and Left folders. Each contains raw data and assets. Raw data includes a similar calibration `calib.txt`, raw depth `depth.xyz` and per-frame depth depth.zip, raw RGB `rgb.mov` and per-frame rgb images `rgb.zip`. Assets include keypoints `keypoints_2d.zip`, foreground segmentations and visualizations in `segmentations_fgbg.zip`, and MANO parameters and renders in `mano.zip`. The Hands folder also contain a visualization of the assets, generic camera calibration, and the partition of frames into Left/Right, and train/test.
+    * Heads data contains one folder for each of the `{segment}` Expression, NeutralScan, NeutralScanGaze and Speech. The elements are the same as with hands, without the MANO fits, and with a different format for frame lists.
+
+    All multiview captures have some elements in common. All have an `image` (raw images in avif format) and `segmentation_parts` (part segmentation in png) folder with one zip per camera in each of them (the hands folders contain also `segmentation_fgbg` since foreground is not the union of all parts unlike the other body parts). Each of them contain assets like `scan_mesh` (simplified 3D scans) and `keypoints_3d` (3D keypoints triangulated from per-view 2D keypoints). `kinematic_tracking` is different for heads, where it includes the registrations `registration_vertices.zip`, their mean and variance, as well as the template mesh, while for body and hands it also contains bone scales `skeleton_scales.txt` and per frame pose `pose.zip` (for head the global head pose is in `head_pose.zip`). Relightable captures contain a folder `lights` with the light calibration `light_pattern_metadata.json` and per-frame light pattern in `light_pattern_per_frame.json`, and per-view background shots in `per_view_background.zip`. Unwrapped assets are included in the folder `uv_image`, with ambient occlusion estimations per frame `ambient_occlusion.zip` and `ambient_occlusion_mean.png` for body and hands, color mean texture `color_mean.png` for body and heads, and color per frame `color.zip` and variance for heads only. Captures also contain assets like train/test splits `frame_splits_list.csv`, segment name per frame in  `frame_segments_list.csv`, camera calibration in `camera_calibration.json`. Finally, bodies include a file describing the transformation of the floor plane in `floor_transformation.txt`.
 
 
 5. **Is there a label or target associated with each instance? If so, please provide a description.**
@@ -77,17 +229,17 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 6. **Is any information missing from individual instances?** *(If so, please provide a description, explaining why this information is missing (e.g., because it was unavailable). This does not include intentionally removed information, but might include, e.g., redacted text.)*
 
-    TODO(julieta)
+    No.
 
 
 7. **Are relationships between individual instances made explicit (e.g., users' movie ratings, social network links)?** *( If so, please describe how these relationships are made explicit.)*
 
-    TODO(julieta)
+    Yes; the paired captures of the same subject are labelled accordingly.
 
 
 8. **Are there recommended data splits (e.g., training, development/validation, testing)?** *(If so, please provide a description of these splits, explaining the rationale behind them.)*
 
-    TODO(julieta)
+    We recommend withholding segments with large and varied motion during training, and using them for testing instead. We also recommend that the high quality captures be used to create high quality avatars, and the phone captures be attempt to re-create high quality avatars from sparse inputs.
 
 
 9. **Are there any errors, sources of noise, or redundancies in the dataset?** *(If so, please provide a description.)*
@@ -282,7 +434,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 39. **Are there tasks for which the dataset should not be used?** *(If so, please provide a description.)*
 
-    TODO
+    No.
 
 
 40. **Any other comments?**
