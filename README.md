@@ -22,17 +22,12 @@ See `requirements.txt`/`environment.yaml`
 - `extensions/` - CUDA extensions
 - `data/` - location of sample data and checkpoints
 
-
 ### Downloading data
 
-TODO:
+Access to the dataset is currently gated.
+Please email `julietamartinez@meta.com`, preferrably from an institutional email, to get access to the data.
 
-```
-
-```
-
-### Installing extensions
-
+### Compiling and installing extensions
 
 ```
 cd extensions/{mvpraymarch,sgutils,utils}
@@ -87,11 +82,11 @@ Full-body Avatars
 Relightable Head Avatars
 ```
 @inproceedings{saito2024rgca,
-          author = {Shunsuke Saito and Gabriel Schwartz and Tomas Simon and Junxuan Li and Giljoo Nam},
-          title = {Relightable Gaussian Codec Avatars},
-          booktitle = {CVPR},
-          year = {2024},
-        }
+  author = {Shunsuke Saito and Gabriel Schwartz and Tomas Simon and Junxuan Li and Giljoo Nam},
+  title = {Relightable Gaussian Codec Avatars},
+  booktitle = {CVPR},
+  year = {2024},
+}
 ```
 
 Relightable Hand Avatars
