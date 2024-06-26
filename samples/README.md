@@ -2,19 +2,15 @@ We provide a few samples of Goliath data.
 
 ### Relightable captures
 
-<div align="center">
-  
-### ⚠️ ⚠️ ⚠️ WARNING! ⚠️ ⚠️ ⚠️ 
-
-The next videos contain flashing lights which may potentially trigger seizures for people with photosensitive epilepsy. Viewer discretion is advised. Please proceed with caution.
-
-</div>
-
 * 1 relightable left hand capture
 * 1 relightable right hand capture
 * 1 relightable head capture
 
 <div align="center">
+
+### ⚠️ ⚠️ ⚠️ WARNING! ⚠️ ⚠️ ⚠️ 
+
+The next videos contain flashing lights which may potentially trigger seizures for people with photosensitive epilepsy. Viewer discretion is advised. Please proceed with caution.
   
 https://github.com/facebookresearch/goliath/assets/3733964/8cb334e7-8808-422b-a07f-3ee901916066
 
