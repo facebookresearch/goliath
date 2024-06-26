@@ -14,6 +14,8 @@ We provide 4 sets of captures; for each subject:
 
 ![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
 
+Please refer to the [samples](https://github.com/facebookresearch/goliath/blob/main/samples/) to get a sense of what the data looks like.
+
 ### Disclaimer
 
 This is a pre-release.
