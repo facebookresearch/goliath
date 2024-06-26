@@ -2,11 +2,22 @@
 
 ### Part of Codec Avatar Studio
 
-Code for Codec Avatar Family.
+We provide 4 sets of captures; for each subject:
+* 1 relightable head capture
+* 1 relightable hands capture
+* 1 fully clothed capture
+* 1 minimally clothed capture
+* 1 mobile head capture
+* 1 mobile hands capture
+* 1 mobile fully clothed capture
+* 1 mobile minimally clothed capture
+
+![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
 
 ### Disclaimer
 
 This is a pre-release.
+
 
 ### Dependencies
 
