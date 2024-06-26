@@ -1,6 +1,8 @@
 # Goliath
 
-Code for Codec Avatar Family
+### Part of Codec Avatar Studio
+
+Code for Codec Avatar Family.
 
 ### Disclaimer
 
