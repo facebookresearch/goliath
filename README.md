@@ -43,7 +43,15 @@ See `requirements.txt`/`environment.yaml`
 - `data/` - location of sample data and checkpoints
 
 
-### Downloading data
+### Data
+
+Besides camera, views, we also provide segmentations, 3d keypoints, registered and unregistered meshes, as well as light information when available.
+
+
+
+https://github.com/facebookresearch/goliath/assets/3733964/3052d8ee-e2b8-48e0-9715-9f0c2e6f6e72
+
+
 
 Access to the dataset is currently gated.
 Please email `julietamartinez@meta.com`, preferrably from an institutional email, to get access to the data.
