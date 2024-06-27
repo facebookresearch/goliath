@@ -7,8 +7,8 @@
 from typing import Optional
 
 import torch as th
-from gsplat.project_gaussians import project_gaussians
-from gsplat.rasterize import rasterize_gaussians
+from gsplat import project_gaussians
+from gsplat import rasterize_gaussians
 
 def render(
     cam_img_w: int,
