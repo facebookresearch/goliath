@@ -12,6 +12,11 @@ We provide 4 sets of captures; for each subject:
 * 1 mobile fully clothed capture
 * 1 mobile minimally clothed capture
 
+And code to train personalized decoders:
+* Relightable Gaussian Codec Avatar heads,
+* Relightable hands
+* Mesh-based bodies 
+
 ![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
 
 Please refer to the [samples](https://github.com/facebookresearch/goliath/blob/main/samples/) to get a sense of what the data looks like.
@@ -37,10 +42,12 @@ See `requirements.txt`/`environment.yaml`
 - `extensions/` - CUDA extensions
 - `data/` - location of sample data and checkpoints
 
+
 ### Downloading data
 
 Access to the dataset is currently gated.
 Please email `julietamartinez@meta.com`, preferrably from an institutional email, to get access to the data.
+
 
 ### Compiling and installing extensions
 
@@ -68,7 +75,6 @@ TODO:
 ```
 
 ```
-
 
 
 ### License
