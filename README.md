@@ -1,6 +1,6 @@
 # Goliath
 
-### Part of Codec Avatar Studio
+### Together with [Ava-256](https://github.com/facebookresearch/ava-256), part of Codec Avatar Studio
 
 We provide 4 sets of captures; for each subject:
 * 1 relightable head capture
