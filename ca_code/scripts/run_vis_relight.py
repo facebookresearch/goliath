@@ -3,9 +3,10 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-
+import logging
 import os
 import sys
+from typing import List
 
 import torch as th
 from addict import Dict as AttrDict
@@ -19,11 +20,13 @@ from ca_code.utils.light_decorator import EnvSpinDecorator, SingleLightCycleDeco
 from ca_code.utils.module_loader import load_from_config
 from ca_code.utils.train import load_checkpoint, to_device
 
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 def main(config: DictConfig):
@@ -32,13 +35,9 @@ def main(config: DictConfig):
     model_dir = config.train.run_dir
     os.makedirs("tmp", exist_ok=True)
 
-    ckpt_path = f"runs/{model_dir}/checkpoints/model.pt"
+    ckpt_path = f"{model_dir}/checkpoints/model.pt"
     if not os.path.exists(ckpt_path):
-        ckpt_path = f"runs/{model_dir}/checkpoints/latest.pt"
-    config_path = f"runs/{model_dir}/config.yml"
-
-    # config
-    config = OmegaConf.load(config_path)
+        ckpt_path = f"{model_dir}/checkpoints/latest.pt"
 
     config.data.shuffle = False
     config.data.split = "test"
@@ -90,6 +89,9 @@ def main(config: DictConfig):
         with th.no_grad():
             preds = model_p(**batch, index=[180 + i])
 
+        if "hand" in model_dir:
+            preds["rgb"] = preds["rgb"] / 255.0
+
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
         save_image(rgb_preds_grid, f"tmp/{i}.png")
@@ -98,7 +100,7 @@ def main(config: DictConfig):
             break
 
     os.system(
-        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_elem.mp4 -y"
+        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_point.mp4 -y"
     )
 
     # download 1k hdr from https://polyhaven.com/a/symmetrical_garden_02
@@ -106,7 +108,7 @@ def main(config: DictConfig):
         model,
         envmap_path="./symmetrical_garden_02_1k.hdr",
         ydown=True,
-        env_scale=18.0,
+        env_scale=8.0,
     ).to(device)
 
     # forward

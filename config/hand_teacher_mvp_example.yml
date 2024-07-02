@@ -39,7 +39,7 @@ loss:
       mask_key: alpha
       mask_erode: 7
       weight: 0.0016 # to account for division by 25 in the old code
-    effnet:
+    vgg:
       src_key: rgb
       tgt_key: image
       mask_key: alpha
