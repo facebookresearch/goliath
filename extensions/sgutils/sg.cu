@@ -1,5 +1,10 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the license found in the
+// LICENSE file in the root directory of this source tree.
+
 #include <iostream>
-#include <vector>
 
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
@@ -7,6 +12,8 @@
 
 #include "helper_math.h"
 #include "utils.h"
+
+using namespace math;
 
 constexpr float SQRT2PI = 2.50662827463;
 constexpr float TWOPI = 6.28318530718;
