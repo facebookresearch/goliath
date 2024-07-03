@@ -15,10 +15,8 @@
 
 using namespace math;
 
-constexpr float SQRT2PI = 2.50662827463;
 constexpr float TWOPI = 6.28318530718;
 constexpr float INV2PI = 0.15915494309;
-constexpr float INVSQRT2PI = 0.3989422804;
 constexpr float SQRT2PI23 = 3.03352966508;
 constexpr float INVSQRT2PI23 = 0.32964899322;
 
