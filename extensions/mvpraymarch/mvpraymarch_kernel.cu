@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // All rights reserved.
-// 
+//
 // This source code is licensed under the license found in the
 // LICENSE file in the root directory of this source tree.
 
@@ -24,6 +24,8 @@
 #include "primaccum.h"
 
 #include "mvpraymarch_subset_kernel.h"
+
+using namespace math;
 
 typedef std::shared_ptr<PrimTransfDataBase> PrimTransfDataBase_ptr;
 typedef std::shared_ptr<PrimSamplerDataBase> PrimSamplerDataBase_ptr;
@@ -68,7 +70,7 @@ void raymarch_forward_cuda(
         int maxhitboxes,
         bool synchitboxes,
         bool chlast,
-        float fadescale, 
+        float fadescale,
         float fadeexp,
         int accum,
         float termthresh,
