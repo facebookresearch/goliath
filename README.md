@@ -66,8 +66,13 @@ make
 
 ### Training
 
+(You may have to add the directory of the codebase to your `PYTHONPATH`)
 ```
 python ca_code/scripts/run_train.py <config.yml>
+```
+or simply
+```
+python -m ca_code.scripts.run_train <config.yml>
 ```
 
 ### Visualization (Relighting)
