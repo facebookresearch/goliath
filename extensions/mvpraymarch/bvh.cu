@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // All rights reserved.
-// 
+//
 // This source code is licensed under the license found in the
 // LICENSE file in the root directory of this source tree.
 
@@ -14,6 +14,8 @@
 #include "cudadispatch.h"
 
 #include "primtransf.h"
+
+using namespace math;
 
 // Expands a 10-bit integer into 30 bits
 // by inserting 2 zeros after each bit.
@@ -185,8 +187,8 @@ __global__ void compute_aabb_kernel(
             float3 raabbmin = nodeaabb[n * (K + K - 1) * 2 + children.y * 2 + 0];
             float3 raabbmax = nodeaabb[n * (K + K - 1) * 2 + children.y * 2 + 1];
 
-            float3 aabbmin = fminf(laabbmin, raabbmin);
-            float3 aabbmax = fmaxf(laabbmax, raabbmax);
+            float3 aabbmin = math::min(laabbmin, raabbmin);
+            float3 aabbmax = math::max(laabbmax, raabbmax);
 
             nodeaabb[n * (K + K - 1) * 2 + node * 2 + 0] = aabbmin;
             nodeaabb[n * (K + K - 1) * 2 + node * 2 + 1] = aabbmax;
@@ -274,7 +276,7 @@ void compute_aabb_cuda(
     std::map<int, std::function<void(dim3, dim3, cudaStream_t, int, int, std::shared_ptr<PrimTransfDataBase>, int*, int2*, int*, float3*, int*)>> dispatcher = {
       { 0, make_cudacall(compute_aabb_kernel<PrimTransfSRT>) }
     };
-    
+
     auto iter = dispatcher.find(min(0, algorithm));
     if (iter != dispatcher.end()) {
         (iter->second)(
