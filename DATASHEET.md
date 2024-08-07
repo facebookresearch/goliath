@@ -454,7 +454,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
 1. **How will the dataset be distributed (e.g., tarball  on website, API, GitHub)?** *(Does the dataset have a digital object identifier (DOI)?)*
 
-    The dataset can be downloaded from AWS. A script to download it is available at https://github.com/facebookresearch/goliath/download.py.
+    Please write to julietamartinez@meta.com from an institutional email to obtain access to the dataset.
 
 
 1. **When will the dataset be distributed?**

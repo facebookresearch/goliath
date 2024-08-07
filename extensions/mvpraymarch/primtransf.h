@@ -22,44 +22,44 @@ __forceinline__ __device__ void compute_aabb_srt(
     p = make_float3(1.f, -1.f, -1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(-1.f, 1.f, -1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(1.f, 1.f, -1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(-1.f, -1.f, 1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(1.f, -1.f, 1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(-1.f, 1.f, 1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 
     p = make_float3(1.f, 1.f, 1.f) / ps;
     p = make_float3(dot(p, pr0), dot(p, pr1), dot(p, pr2)) + pt;
 
-    pmin = fminf(pmin, p);
-    pmax = fmaxf(pmax, p);
+    pmin = math::min(pmin, p);
+    pmax = math::max(pmax, p);
 }
 
 struct PrimTransfDataBase {

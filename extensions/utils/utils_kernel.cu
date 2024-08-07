@@ -1,16 +1,12 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // All rights reserved.
-// 
+//
 // This source code is licensed under the license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <cassert>
-#include <functional>
-#include <map>
-#include <tuple>
-#include <vector>
-
 #include "helper_math.h"
+
+using namespace math;
 
 __global__ void compute_raydirs_forward_kernel(
         int N, int H, int W,
