@@ -103,10 +103,10 @@ def main(config: DictConfig):
         f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_point.mp4 -y"
     )
 
-    # download 1k hdr from https://polyhaven.com/a/symmetrical_garden_02
+    # download 1k hdr from https://polyhaven.com/a/metro_noord
     model_e = EnvSpinDecorator(
         model,
-        envmap_path="./symmetrical_garden_02_1k.hdr",
+        envmap_path="./metro_noord_1k.hdr",
         ydown=True,
         env_scale=8.0,
     ).to(device)

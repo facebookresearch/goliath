@@ -14,12 +14,23 @@ import torch as th
 import torch.nn.functional as thf
 from ca_code.utils import envmap
 
+
 class EnvSpinDecorator(th.nn.Module):
-    def __init__(self, mod, envmap_path, envmap_dist=10000.0, env_scale=18.0, cycle=256, sigma_step=0.2, miplevel=4, ydown=False):
+    def __init__(
+        self,
+        mod,
+        envmap_path,
+        envmap_dist=10000.0,
+        env_scale=18.0,
+        cycle=256,
+        sigma_step=0.2,
+        miplevel=4,
+        ydown=False,
+    ):
         super(EnvSpinDecorator, self).__init__()
         self.mod = mod
         self.envmap_dist = envmap_dist
-        
+
         self.env_scale = env_scale
         self.cycle = cycle
         self.sigma_step = sigma_step
@@ -35,42 +46,59 @@ class EnvSpinDecorator(th.nn.Module):
             indexing="ij",
         )
         sph = np.stack(
-            [np.sin(theta) * np.sin(phi), np.cos(theta), -np.sin(theta) * np.cos(phi)], axis=0
+            [np.sin(theta) * np.sin(phi), np.cos(theta), -np.sin(theta) * np.cos(phi)],
+            axis=0,
         ).reshape((3, -1))
         self.register_buffer("sphvec", th.from_numpy(sph))
-        
+
     def _set_lightmap(self, envmap_path):
         image = cv2.imread(envmap_path, -1)[:, :, ::-1]
         if self.ydown:
             image = image[::-1, ::-1]
         image = cv2.resize(image, (1024, 512), interpolation=cv2.INTER_AREA)
         image = np.ascontiguousarray(image)
-        
+
         self.image = th.from_numpy(image).float()  # H x W x 3
         self.image = self.image.permute((2, 0, 1)).contiguous()  # 3 x H x W
 
-        multisin = th.sin((th.arange(self.image.shape[1]) + 0.5) * np.pi / self.image.shape[1])[None, None, :, None]
+        multisin = th.sin(
+            (th.arange(self.image.shape[1]) + 0.5) * np.pi / self.image.shape[1]
+        )[None, None, :, None]
         image = self.image[None].clone() * multisin
         mipmap = [image]
         num_sample = 4096
         for i in range(self.miplevel - 1):
             sigma = (i + 1) * self.sigma_step
-            image = thf.interpolate(image, None, scale_factor=0.5, mode='area').cuda()
+            image = thf.interpolate(image, None, scale_factor=0.5, mode="area").cuda()
             height = image.shape[2]
             width = image.shape[3]
             theta, phi = th.meshgrid(
-                    (th.arange(height, dtype=th.float32) + 0.5) * np.pi / height,
-                    (th.arange(-width//2, width//2, dtype=th.float32) + 0.5) * np.pi * 2 / width)
+                (th.arange(height, dtype=th.float32) + 0.5) * np.pi / height,
+                (th.arange(-width // 2, width // 2, dtype=th.float32) + 0.5)
+                * np.pi
+                * 2
+                / width,
+            )
 
-            vec = th.stack([th.sin(theta) * th.sin(phi), th.cos(theta), -th.sin(theta) * th.cos(phi)], dim=0).cuda()[None]
+            vec = th.stack(
+                [
+                    th.sin(theta) * th.sin(phi),
+                    th.cos(theta),
+                    -th.sin(theta) * th.cos(phi),
+                ],
+                dim=0,
+            ).cuda()[None]
             convolve = envmap.prefilterEnvmapSG(sigma, vec, image, num_sample)
             mipmap.append(convolve.data.cpu())
         for i, p in enumerate(mipmap):
             self.register_buffer(f"mipmap_{i}", p)
 
-    def mipmap(self, bsize, device, scale = 1.0):
-        return [getattr(self, f"mipmap_{i}").expand(bsize, -1, -1, -1).to(device) * scale for i in range(self.miplevel)]
-        
+    def mipmap(self, bsize, device, scale=1.0):
+        return [
+            getattr(self, f"mipmap_{i}").expand(bsize, -1, -1, -1).to(device) * scale
+            for i in range(self.miplevel)
+        ]
+
     def forward(self, **data):
         light_intensity = []
         envbg = []
@@ -93,16 +121,19 @@ class EnvSpinDecorator(th.nn.Module):
 
             lightrots[i] = rot_mat
             perc90 = np.percentile(self.image.data.cpu().numpy(), 90)
-            envbg.append(new_env / (perc90 if perc90 > 0 else new_env.max().item()) * 255)
+            envbg.append(
+                new_env / (perc90 if perc90 > 0 else new_env.max().item()) * 255
+            )
 
-            env = cv2.resize(new_env.permute(1, 2, 0).numpy(), (32, 16), interpolation=cv2.INTER_AREA)
-            new_env = th.from_numpy(env).permute(2, 0, 1)
+            new_env = thf.interpolate(
+                new_env[None], (16, 32), mode="bilinear", antialias=True
+            )[0]
 
             new_env_sin = (
                 new_env
-                * th.sin((th.arange(new_env.shape[1]) + 0.5) * np.pi / new_env.shape[1])[
-                    None, :, None
-                ]
+                * th.sin(
+                    (th.arange(new_env.shape[1]) + 0.5) * np.pi / new_env.shape[1]
+                )[None, :, None]
             )
             new_env = self.env_scale * new_env / new_env_sin.sum()
             norm_scale.append(self.env_scale / new_env_sin.sum())
@@ -117,7 +148,9 @@ class EnvSpinDecorator(th.nn.Module):
         light_intensity = th.stack(light_intensity, dim=0).float().to(device)
         light_dir = th.stack(light_dir, dim=0).float().to(device)
 
-        data["preconv_envmap"] = self.mipmap(batch_size, device, 2.0 * np.pi * norm_scale[0])
+        data["preconv_envmap"] = self.mipmap(
+            batch_size, device, 2.0 * np.pi * norm_scale[0]
+        )
         data["sigma_step"] = self.sigma_step
         data["envmap"] = envmaps
         data["lightrot"] = lightrots
@@ -127,12 +160,14 @@ class EnvSpinDecorator(th.nn.Module):
         data["light_type"] = "envmap"
         data["n_lights"] = light_intensity.shape[1] * th.ones(batch_size, 1).to(device)
         data["is_fullylit_frame"] = th.zeros(1).to(device)
-                            
+
         return self.mod(**data)
-    
+
 
 class SingleLightCycleDecorator(th.nn.Module):
-    def __init__(self, mod: th.nn.Module, cycle: int = 256, light_rotate_axis: int = 0) -> None:
+    def __init__(
+        self, mod: th.nn.Module, cycle: int = 256, light_rotate_axis: int = 0
+    ) -> None:
         super().__init__()
         self.mod = mod
 
@@ -153,18 +188,20 @@ class SingleLightCycleDecorator(th.nn.Module):
                 trans = data["head_pose"][i].data.cpu().numpy()[:3, 3]
             elif "pose" in data:
                 trans = data["pose"][i, :3].data.cpu().numpy()
-                
 
             angle = (abs(index) / self.cycle) * 2 * np.pi
             if self.light_rotate_axis == 0:
-                cur_lpos = np.asarray([0.0, 1100.0 * np.sin(angle), 1100.0 * np.cos(angle)]
-                    ).astype(np.float32)
+                cur_lpos = np.asarray(
+                    [0.0, 1100.0 * np.sin(angle), 1100.0 * np.cos(angle)]
+                ).astype(np.float32)
             elif self.light_rotate_axis == 1:
-                cur_lpos = np.asarray([-1.0 * 1100.0 * np.sin(angle), 300.0, 1100.0 * np.cos(angle)]
-                    ).astype(np.float32)
+                cur_lpos = np.asarray(
+                    [-1.0 * 1100.0 * np.sin(angle), 300.0, 1100.0 * np.cos(angle)]
+                ).astype(np.float32)
             else:
-                cur_lpos = np.asarray([1100.0 * np.cos(angle), 1100.0 * np.sin(angle), 0.0]
-                    ).astype(np.float32)
+                cur_lpos = np.asarray(
+                    [1100.0 * np.cos(angle), 1100.0 * np.sin(angle), 0.0]
+                ).astype(np.float32)
 
             cur_lpos = 1100.0 * cur_lpos / np.linalg.norm(cur_lpos)
             if trans is not None:
