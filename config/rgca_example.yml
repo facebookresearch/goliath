@@ -1,10 +1,10 @@
 
-# a dummy example
 sid: AXE977
+root_dir: /uca/julieta/oss/goliath/
 
 data:
-  root_path: /mnt/captures/oss/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
-  shared_assets_path: /mnt/captures/oss/goliath/shared/static_assets_head.pt
+  root_path: ${root_dir}/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
+  shared_assets_path: ${root_dir}/shared/static_assets_head.pt
   split: train
   shuffle: True
   fully_lit_only: False
@@ -95,7 +95,7 @@ train:
   ckpt_dir: ${.run_dir}/checkpoints
 
   # CHANGE ME
-  n_max_iters: 600000
+  n_max_iters: 800_000
   log_every_n_steps: 10
-  summary_every_n_steps: 1000
-  ckpt_every_n_steps: 1000
+  summary_every_n_steps: 1_000
+  ckpt_every_n_steps: 10_000

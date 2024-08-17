@@ -13,6 +13,7 @@ import typing
 import inspect
 from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
 import torch.nn as nn
+import shutil
 
 from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
@@ -137,6 +138,7 @@ def load_checkpoint(
             ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
     logger.info(f"loading checkpoint {ckpt_path}")
     ckpt_dict = th.load(ckpt_path, map_location=map_location)
+
     for name, mod in modules.items():
         params = ckpt_dict[name]
         if ignore_names is not None and name in ignore_names:
@@ -249,6 +251,11 @@ def train(
                 {"model": model, "optimizer": optimizer},
                 iteration=iteration,
             )
+            shutil.copyfile(
+                f"{config.train.ckpt_dir}/latest.pt",
+                f"{config.train.ckpt_dir}/{iteration:06d}.pt"
+            ) 
+
 
         if (
             lr_scheduler is not None
