@@ -76,7 +76,7 @@ train:
   ckpt_dir: ${.run_dir}/checkpoints
 
   # CHANGE ME
-  n_max_iters: 400000
+  n_max_iters: 800_000
   log_every_n_steps: 100
-  summary_every_n_steps: 1000
-  ckpt_every_n_steps: 1000
+  summary_every_n_steps: 1_000
+  ckpt_every_n_steps: 10_000
