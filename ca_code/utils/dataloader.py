@@ -62,9 +62,6 @@ def get_capture_type(capture_name: str) -> CaptureType:
     )
 
 
-logger = logging.getLogger(__name__)
-
-
 class BodyDataset(IterableDataset):
     def __init__(
         self,
@@ -111,9 +108,20 @@ class BodyDataset(IterableDataset):
 
     @lru_cache(maxsize=1)
     def get_camera_calibration(self) -> Dict[str, Any]:
+        """Loads and parses camera parameters"""
         with open(self.root_path / "camera_calibration.json", "r") as f:
             camera_calibration = json.load(f)["KRT"]
-        return {str(c["cameraId"]): c for c in camera_calibration}
+
+        logger.info(f"Found {len(camera_calibration)} cameras in the calibration file")
+
+        # We might have images for fewer cameras than there are listed in the json file
+        image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
+        image_zips = [x.name.split(".")[0][3:] for x in image_zips]
+        camera_params = {str(c["cameraId"]): c for c in camera_calibration if c["cameraId"] in image_zips}
+
+        logger.info(f"Left with {len(camera_params)} cameras after filtering")
+
+        return camera_params
 
     @lru_cache(maxsize=1)
     def get_camera_parameters(self, camera: str, ds: int = 2) -> Dict[str, Any]:
