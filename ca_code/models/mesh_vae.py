@@ -100,7 +100,7 @@ class AutoEncoder(nn.Module):
         self.lbs_fn = LBSModule(
             assets.lbs_model_json,
             assets.lbs_config_dict,
-            assets.template_mesh[0],
+            assets.template_mesh,
             assets.skeleton_scales,
             assets.global_scaling,
         )

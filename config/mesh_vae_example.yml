@@ -167,8 +167,8 @@ train:
   ckpt_dir: ${.run_dir}/checkpoints
 
   # CHANGE ME
-  n_max_iters: 10000
-  log_every_n_steps: 5
-  summary_every_n_steps: 50
-  ckpt_every_n_steps: 1000
+  n_max_iters: 800_000
+  log_every_n_steps: 10
+  summary_every_n_steps: 10
+  ckpt_every_n_steps: 10_000
   clip_grad_norm: 1.0
