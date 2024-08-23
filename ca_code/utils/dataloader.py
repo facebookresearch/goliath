@@ -14,7 +14,7 @@ from enum import Enum
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -71,8 +71,24 @@ class BodyDataset(IterableDataset):
         fully_lit_only: bool = True,
         partially_lit_only: bool = False,
         shuffle: bool = True,
+        cameras_subset: Optional[Iterable[str]] = None,
+        frames_subset: Optional[Iterable[int]] = None,
     ):
-        if split not in ["train", "test"]:
+        """
+        Dataset of heads, hands or bodies
+
+        root_path: The path where the data is located on disk
+        shared_assets_path: pt file with shared assets such as common topology
+        split: Either "train" or "test"
+        fully_lit_only: Whether to use only fully lit frames
+        partial_lit_only: Whether to use only partially lit frames
+        shuffle: Whether to sample uniformly at random during __getitem__
+            TODO(julieta) move shuffling to sampler
+        cameras: Subset of cameras to use, useful for validation/testing
+        frames: Subset of frames to use, useful for validation/testing
+        """
+
+        if split not in {"train", "test"}:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
         self.root_path: Path = Path(root_path)
         self.shared_assets_path: Path = shared_assets_path
@@ -95,7 +111,11 @@ class BodyDataset(IterableDataset):
             CaptureType.HAND: self._static_get_for_hand,
         }.get(self.capture_type)
 
-        self.cameras = list(self.get_camera_calibration().keys())
+        # Get list of cameras after filtering
+        self.cameras_subset = set(cameras_subset or {})
+        self.frames_subset = set(frames_subset or {})
+
+        self.cameras = list(self.get_camera_calibration().keys())        
 
     @lru_cache(maxsize=1)
     def load_shared_assets(self) -> Dict[str, Any]:
@@ -118,8 +138,13 @@ class BodyDataset(IterableDataset):
         image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
         image_zips = [x.name.split(".")[0][3:] for x in image_zips]
         camera_params = {str(c["cameraId"]): c for c in camera_calibration if c["cameraId"] in image_zips}
+        logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
 
-        logger.info(f"Left with {len(camera_params)} cameras after filtering")
+        # Filter for cameras in the passed subset
+        if self.cameras_subset:
+            cameras_subset = set(self.cameras_subset)  # No-op if already a set
+            camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in cameras_subset}
+            logger.info(f"Left with {len(camera_params)} cameras after filtering for passed camera subset")
 
         return camera_params
 
@@ -149,12 +174,21 @@ class BodyDataset(IterableDataset):
     def get_camera_list(self) -> List[str]:
         return self.cameras
 
+    def filter_frame_list(self, frame_list: List[int]) -> List[int]:
+        frames = frame_list
+        if self.frames_subset:
+            frames = list(set(frame_list).intersection(self.frames_subset))
+        return frames
+
     @lru_cache(maxsize=2)
     def get_frame_list(
-        self, fully_lit_only: bool = False, partially_lit_only: bool = False
+        self,
+        fully_lit_only: bool = False,
+        partially_lit_only: bool = False,
     ) -> List[int]:
         # fully lit only and partially lit only cannot be enabled at the same time
         assert not (fully_lit_only and partially_lit_only)
+
         df = pd.read_csv(self.root_path / f"frame_splits_list.csv")
         frame_list = df[df.split == self.split].frame.tolist()
 
@@ -163,13 +197,16 @@ class BodyDataset(IterableDataset):
             or self.capture_type is CaptureType.BODY
         ):
             # All frames in Body captures are fully lit
-            return list(frame_list)
+            frame_list = list(frame_list)
+            return self.filter_frame_list(frame_list) 
 
         if fully_lit_only:
             fully_lit = {
                 frame for frame, index in self.load_light_pattern() if index == 0
             }
-            return [f for f in fully_lit if f in frame_list]
+            frame_list = [f for f in fully_lit if f in frame_list]
+            return self.filter_frame_list(frame_list)
+
         else:
             light_pattern = self.load_light_pattern_meta()["light_patterns"]
             # NOTE: it only filters the frames with 5 lights on
@@ -178,7 +215,8 @@ class BodyDataset(IterableDataset):
                 for frame, index in self.load_light_pattern()
                 if len(light_pattern[index]["light_index_durations"]) == 5
             }
-            return [f for f in partially_lit if f in frame_list]
+            frame_list = [f for f in partially_lit if f in frame_list]
+            return self.filter_frame_list(frame_list) 
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_3d_keypoints(self, frame: int) -> Optional[Dict[str, Any]]:
@@ -670,6 +708,7 @@ class BodyDataset(IterableDataset):
         camera_list = self.get_camera_list()
 
         # NOTE: not a real shuffle, just a random
+        # TODO(julieta) shuffling should be done by the sampler, not by the dataset
         if self.shuffle:
             while True:
                 frame = np.random.choice(frame_list)
@@ -717,7 +756,7 @@ def collate_fn(items):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=Path, help="Root path to capture data")
-    parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
+    parser.add_argument("-s", "--split", type=str, default="train", choices=["train", "test"])
     args = parser.parse_args()
 
     dataset = BodyDataset(
@@ -726,6 +765,8 @@ if __name__ == "__main__":
         shared_assets_path=None,
         shuffle=False,
         fully_lit_only=False,
+        cameras_subset={"401106"},
+        frames_subset={141361}
     )
     # dataloader = DataLoader(
     #     dataset,
