@@ -709,7 +709,7 @@ class BodyDataset(Dataset):
         )
         camera_list = self.get_camera_list()
 
-        frame = frame_list[idx // len(frame_list)]
+        frame = frame_list[idx // len(camera_list)]
         camera = camera_list[idx % len(camera_list)]
 
         try:

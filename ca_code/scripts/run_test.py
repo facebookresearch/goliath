@@ -35,16 +35,18 @@ def main(config: DictConfig):
 
     static_assets = AttrDict(train_dataset.static_assets)
 
-    model = load_from_config(config.model, assets=static_assets).to(device).eval()
-
-    loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
-
-    # TODO(julieta) can we remove this?
+    model = (
+        load_from_config(
+            config.model,
+            assets=static_assets)
+            .to(device)
+            .eval()
+        )
     
-    train_loader = DataLoader(
-        train_dataset,
-        **config.dataloader,
-    )
+    # Remove losses that are only computed during training
+    config.loss.losses.pop("backlit_reg")
+    config.loss.losses.pop("learn_blur")
+    loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
 
     if "ckpt" in config.test:
         logger.info(f"loading checkpoint: {config.test.ckpt}")

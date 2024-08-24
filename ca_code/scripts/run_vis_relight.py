@@ -50,6 +50,7 @@ def main(config: DictConfig):
 
     static_assets = AttrDict(dataset.static_assets)
 
+    config.dataloader.shuffle = False
     config.dataloader.batch_size = 1
     config.dataloader.num_workers = 4
 
@@ -113,7 +114,7 @@ def main(config: DictConfig):
     ).to(device)
 
     # forward
-    for i, batch in tqdm(enumerate(loader)):
+    for i, batch in enumerate(tqdm(loader)):
         batch = to_device(batch, device)
         batch_filter_fn(batch)
         with th.no_grad():
