@@ -51,7 +51,7 @@ def test(
     loss_fn: nn.Module,
     test_data: Iterator,
     config: Mapping[str, Any],
-    vis_path: Path,
+    vis_path: Optional[Path] = None,
     test_writer: Optional[SummaryWriter] = None,
     summary_fn: Optional[Callable] = None,
     batch_filter_fn: Optional[Callable] = None,
@@ -84,11 +84,12 @@ def test(
             logger.info(f"iter={i+1}/{len(test_data)}: {loss_str}")
 
             # vis
-            pred = linear2srgb(preds["rgb"]).squeeze()
-            gt = linear2srgb(batch["image"]).squeeze()
-            l2 = (pred - gt) ** 2
-            out = make_grid([gt, pred, l2 * 20], nrow=4)
-            save_image(out, vis_path / f"{i:04d}.png")
+            if vis_path:
+                pred = linear2srgb(preds["rgb"]).squeeze()
+                gt = linear2srgb(batch["image"]).squeeze()
+                l2 = (pred - gt) ** 2
+                out = make_grid([gt, pred, l2 * 20], nrow=4)
+                save_image(out, vis_path / f"{i:04d}.png")
 
         if (
             logging_enabled

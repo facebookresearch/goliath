@@ -81,8 +81,10 @@ def main(config: DictConfig):
 
     summary_fn = load_from_config(config.summary)
 
-    vis_path = Path(config.test.vis_path)
-    os.makedirs(vis_path, exist_ok=True)
+    vis_path = None
+    if "vis_path" in config.test:
+        vis_path = Path(config.test.vis_path)
+        os.makedirs(vis_path, exist_ok=True)
 
     with th.no_grad():
         test(

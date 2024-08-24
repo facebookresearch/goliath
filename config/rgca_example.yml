@@ -107,7 +107,7 @@ test:
     ckpt_path: ${test_path}/checkpoints/latest.pt
     strict: True
     map_location: cuda:0
-  vis_path: ${test_path}/viz
+  # vis_path: ${test_path}/viz
   log_every_n_steps: 1
   data:
     root_path: ${data.root_path}
