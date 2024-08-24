@@ -3,6 +3,7 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+from pathlib import Path
 import logging
 import os
 import sys
@@ -67,6 +68,7 @@ def main(config: DictConfig):
     test_dataset = BodyDataset(**config.test.data)
 
     config.dataloader.shuffle = False
+    config.dataloader.batch_size = 1
     test_loader = DataLoader(
         test_dataset,
         collate_fn=collate_fn,
@@ -79,14 +81,16 @@ def main(config: DictConfig):
 
     summary_fn = load_from_config(config.summary)
 
+    vis_path = Path(config.test.vis_path)
+    os.makedirs(vis_path, exist_ok=True)
 
-    # model = model.eval()
     with th.no_grad():
         test(
             model,
             loss_fn,
             test_loader,
             config,
+            vis_path,
             summary_fn=summary_fn,
             batch_filter_fn=batch_filter_fn,
             test_writer=None,

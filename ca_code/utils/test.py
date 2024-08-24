@@ -15,11 +15,13 @@ from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tupl
 import torch.nn as nn
 import shutil
 
+from pathlib import Path
 from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import OmegaConf, DictConfig
 
 from torch.optim.lr_scheduler import LRScheduler
+from ca_code.utils.image import linear2srgb
 
 from ca_code.utils.train import (
     process_losses,
@@ -30,7 +32,7 @@ from ca_code.utils.train import (
 from ca_code.utils.torchutils import to_device
 from ca_code.utils.module_loader import load_class, build_optimizer
 
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 
 import logging
 
@@ -49,6 +51,7 @@ def test(
     loss_fn: nn.Module,
     test_data: Iterator,
     config: Mapping[str, Any],
+    vis_path: Path,
     test_writer: Optional[SummaryWriter] = None,
     summary_fn: Optional[Callable] = None,
     batch_filter_fn: Optional[Callable] = None,
@@ -79,6 +82,13 @@ def test(
             _loss_dict = process_losses(loss_dict)
             loss_str = " ".join([f"{k}={v:.4f}" for k, v in _loss_dict.items()])
             logger.info(f"iter={i+1}/{len(test_data)}: {loss_str}")
+
+            # vis
+            pred = linear2srgb(preds["rgb"]).squeeze()
+            gt = linear2srgb(batch["image"]).squeeze()
+            l2 = (pred - gt) ** 2
+            out = make_grid([gt, pred, l2 * 20], nrow=4)
+            save_image(out, vis_path / f"{i:04d}.png")
 
         if (
             logging_enabled
