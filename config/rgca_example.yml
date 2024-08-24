@@ -102,7 +102,7 @@ train:
 
 test:
   ckpt:
-    ckpt_path: /checkpoint/avatar/julietamartinez/goliath/RGCA/AXE977/2/checkpoints/790000.pt
+    ckpt_path: /checkpoint/avatar/julietamartinez/goliath/RGCA/AXE977/2/checkpoints/latest.pt
     strict: True
     map_location: cuda:0
   log_every_n_steps: 1

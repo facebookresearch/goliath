@@ -46,6 +46,13 @@ def main(config: DictConfig):
     # Remove losses that are only computed during training
     config.loss.losses.pop("backlit_reg")
     config.loss.losses.pop("learn_blur")
+    config.loss.losses["psnr"] = {
+        "src_key": "rgb",
+        "tgt_key": "image",
+        "mask_key": "image_weight",
+        "weight": 1,
+    }
+    
     loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
 
     if "ckpt" in config.test:
@@ -65,8 +72,6 @@ def main(config: DictConfig):
         collate_fn=collate_fn,
         **config.dataloader,
     )
-
-    # import ipdb; ipdb.set_trace()
 
     # Disable learn-only stuff
     model.learn_blur_enabled = False
