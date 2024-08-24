@@ -15,21 +15,21 @@ TIME='7-00:00:00'
 
 ROOT_DIR=/home/julietamartinez/rsc/goliath/
 
-# SID=QVC422
-# DATA_ROOT=/uca/julieta/oss/goliath/m--20230714--0903--QVC422--pilot--ProjectGoliath--Head/
-
-# SID=AXE977
-# DATA_ROOT=/uca/julieta/oss/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
-
-# SID=QZX685
-# DATA_ROOT=/uca/julieta/oss/goliath/m--20230317--1011--QZX685--pilot--ProjectGoliath--Head/
-
-SID=XKT970
-DATA_ROOT=/uca/julieta/oss/goliath/m--20230524--0942--XKT970--pilot--ProjectGoliath--Head/
+declare -a SIDS=("AXE977" "XKT970" "QVC422" "QZX685")
+declare -a DATA_ROOTS=(
+    "/uca/julieta/oss/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/"
+    "/uca/julieta/oss/goliath/m--20230524--0942--XKT970--pilot--ProjectGoliath--Head/"
+    "/uca/julieta/oss/goliath/m--20230714--0903--QVC422--pilot--ProjectGoliath--Head/"
+    "/uca/julieta/oss/goliath/m--20230317--1011--QZX685--pilot--ProjectGoliath--Head/"
+)
 
 ###-----------------------------------------------------------------
 # Loop over for creation of runs
-# for i in $(seq 1 4); do
+for (( i=0; i<"${#SIDS[@]}"; i++ )); do
+
+SID="${SIDS[i]}"
+DATA_ROOT="${DATA_ROOTS[i]}"
+
 JOB_NAME=RGCA_${SID}
 CKPT_DIR=/checkpoint/avatar/julietamartinez/goliath/RGCA/${SID}/
 
@@ -79,4 +79,5 @@ sbatch $SCRIPT
 
 ###Optionally, remove the temporary script file
 rm -f $SCRIPT
-# done
+
+done

@@ -1,4 +1,3 @@
-
 sid: AXE977
 root_dir: /uca/julieta/oss/goliath/
 
@@ -6,12 +5,12 @@ data:
   root_path: ${root_dir}/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head/
   shared_assets_path: ${root_dir}/shared/static_assets_head.pt
   split: train
-  shuffle: True
   fully_lit_only: False
 
 dataloader:
   batch_size: 4
   num_workers: 8
+  shuffle: True
 
 model_name: rgca
 
@@ -99,3 +98,44 @@ train:
   log_every_n_steps: 10
   summary_every_n_steps: 1_000
   ckpt_every_n_steps: 10_000
+
+
+test:
+  ckpt:
+    ckpt_path: /checkpoint/avatar/julietamartinez/goliath/RGCA/AXE977/2/checkpoints/790000.pt
+    strict: True
+    map_location: cuda:0
+  log_every_n_steps: 1
+  data:
+    root_path: ${data.root_path}
+    shared_assets_path: ${data.shared_assets_path}
+    split: test
+    fully_lit_only: False
+    cameras_subset: [
+      "401645",
+      "401964",
+      "402501",
+      "402597",
+      "402801",
+      "402871",
+      "402873",
+      "402956",
+      "402969",
+      "402978",
+      "402982",
+      "403066",
+    ]
+    frames_subset: [
+      27533,
+      28585,
+      28739,
+      28874,
+      29296,
+      29728,
+      139248,
+      140399,
+      140436,
+      140689,
+      140968,
+      141333,
+    ]

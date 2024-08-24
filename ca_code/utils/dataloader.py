@@ -28,7 +28,7 @@ from ca_code.utils.obj import load_obj
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
 from scipy.ndimage.morphology import binary_dilation
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 from torchvision.transforms.functional import pil_to_tensor
 
@@ -62,7 +62,7 @@ def get_capture_type(capture_name: str) -> CaptureType:
     )
 
 
-class BodyDataset(IterableDataset):
+class BodyDataset(Dataset):
     def __init__(
         self,
         root_path: Path,
@@ -70,7 +70,6 @@ class BodyDataset(IterableDataset):
         split: str,
         fully_lit_only: bool = True,
         partially_lit_only: bool = False,
-        shuffle: bool = True,
         cameras_subset: Optional[Iterable[str]] = None,
         frames_subset: Optional[Iterable[int]] = None,
     ):
@@ -82,8 +81,6 @@ class BodyDataset(IterableDataset):
         split: Either "train" or "test"
         fully_lit_only: Whether to use only fully lit frames
         partial_lit_only: Whether to use only partially lit frames
-        shuffle: Whether to sample uniformly at random during __getitem__
-            TODO(julieta) move shuffling to sampler
         cameras: Subset of cameras to use, useful for validation/testing
         frames: Subset of frames to use, useful for validation/testing
         """
@@ -95,7 +92,6 @@ class BodyDataset(IterableDataset):
         self.split: str = split
         self.fully_lit_only: bool = fully_lit_only
         self.partially_lit_only: bool = partially_lit_only
-        self.shuffle: bool = shuffle
 
         self.capture_type: CaptureType = get_capture_type(self.root_path.name)
         self._get_fn: Callable = {
@@ -113,7 +109,9 @@ class BodyDataset(IterableDataset):
 
         # Get list of cameras after filtering
         self.cameras_subset = set(cameras_subset or {})
+
         self.frames_subset = set(frames_subset or {})
+        self.frames_subset = set(map(int, self.frames_subset))
 
         self.cameras = list(self.get_camera_calibration().keys())        
 
@@ -135,11 +133,13 @@ class BodyDataset(IterableDataset):
         logger.info(f"Found {len(camera_calibration)} cameras in the calibration file")
 
         # We might have images for fewer cameras than there are listed in the json file
-        image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
-        image_zips = [x.name.split(".")[0][3:] for x in image_zips]
-        camera_params = {str(c["cameraId"]): c for c in camera_calibration if c["cameraId"] in image_zips}
-        logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
+        # image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
+        # image_zips = [x.name.split(".")[0][3:] for x in image_zips]
+        # camera_params = {str(c["cameraId"]): c for c in camera_calibration if c["cameraId"] in image_zips}
+        # logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
 
+        camera_params = {str(c["cameraId"]): c for c in camera_calibration}
+        
         # Filter for cameras in the passed subset
         if self.cameras_subset:
             cameras_subset = set(self.cameras_subset)  # No-op if already a set
@@ -700,37 +700,28 @@ class BodyDataset(IterableDataset):
         else:
             return sample
 
-    def __iter__(self):
+
+    def __getitem__(self, idx):
+        # TODO(julieta) don't filter every time (it's cached, but still bad practice here)
         frame_list = self.get_frame_list(
             fully_lit_only=self.fully_lit_only,
             partially_lit_only=self.partially_lit_only,
         )
         camera_list = self.get_camera_list()
 
-        # NOTE: not a real shuffle, just a random
-        # TODO(julieta) shuffling should be done by the sampler, not by the dataset
-        if self.shuffle:
-            while True:
-                frame = np.random.choice(frame_list)
-                camera = np.random.choice(camera_list)
-                try:
-                    yield self.get(frame, camera)
-                except Exception as e:
-                    logger.warning(
-                        f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
-                    )
-                    logger.warning(f"{e}")
+        frame = frame_list[idx // len(frame_list)]
+        camera = camera_list[idx % len(camera_list)]
 
-        else:
-            for frame in frame_list:
-                for camera in camera_list:
-                    try:
-                        yield self.get(frame, camera)
-                    except Exception as e:
-                        logger.warning(
-                            f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
-                        )
-                        logger.warning(f"{e}")
+        try:
+            data = self.get(frame, camera)
+        except Exception as e:
+            logger.warning(
+                f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
+            )
+            return None
+
+        return data
+
 
     def __len__(self):
         return len(
@@ -763,17 +754,46 @@ if __name__ == "__main__":
         root_path=args.input,
         split=args.split,
         shared_assets_path=None,
-        shuffle=False,
         fully_lit_only=False,
-        cameras_subset={"401106"},
-        frames_subset={141361}
+        cameras_subset=[
+            "401645",
+            "401964",
+            "402501",
+            "402597",
+            # "402801",
+            # "402871",
+            # "402873",
+            # "402956",
+            # "402969",
+            # "402978",
+            # "402982",
+            # "403066",
+        ],
+        frames_subset=[
+            "27533",
+            "28585",
+            "28739",
+            "28874",
+            # "29296",
+            # "29728",
+            # "139248",
+            # "140399",
+            # "140436",
+            # "140689",
+            # "140968",
+            # "141333",
+        ]
     )
-    # dataloader = DataLoader(
-    #     dataset,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=4,
-    # )
+    dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True,
+        num_workers=4,
+    )
 
-    for row in tqdm(dataset):
-        continue
+    # for row in tqdm(dataset):
+    # for row in tqdm(dataloader):
+    #     continue
+
+    for i, row in enumerate(dataloader):
+        print(i)

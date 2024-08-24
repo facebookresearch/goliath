@@ -14,12 +14,10 @@ from addict import Dict as AttrDict
 
 from ca_code.utils.dataloader import BodyDataset, collate_fn
 
-from ca_code.utils.train import (
-    build_optimizer,
-    load_checkpoint,
-    load_from_config,
-    train,
-)
+from ca_code.utils.train import load_checkpoint, load_from_config
+from ca_code.utils.test import test
+
+
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
@@ -32,57 +30,58 @@ def main(config: DictConfig):
     device = th.device(f"cuda:0")
 
     train_dataset = BodyDataset(**config.data)
+    
     batch_filter_fn = train_dataset.batch_filter
 
     static_assets = AttrDict(train_dataset.static_assets)
 
     model = load_from_config(config.model, assets=static_assets).to(device)
-    optimizer = build_optimizer(config.optimizer, model)
 
     loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
 
     # TODO(julieta) can we remove this?
+    
     train_loader = DataLoader(
         train_dataset,
         **config.dataloader,
     )
 
-    os.makedirs(config.train.ckpt_dir, exist_ok=True)
-    if "ckpt" in config.train:
-        logger.info(f"loading checkpoint: {config.train.ckpt}")
-        load_checkpoint(**config.train.ckpt, modules={"model": model})
-    elif "resume" in config.train:
-        logger.info(f"loading latest checkpoint from: {config.train.ckpt_dir}")
-        load_checkpoint(
-            config.train.ckpt_dir, modules={"model": model, "optimizer": optimizer}
-        )
+    if "ckpt" in config.test:
+        logger.info(f"loading checkpoint: {config.test.ckpt}")
+        load_checkpoint(**config.test.ckpt, modules={"model": model})
+    else:
+        raise ValueError("No checkpoint provided")
 
-    logger.info("starting training with the config:")
+    logger.info("starting test with the config:")
     logger.info(OmegaConf.to_yaml(config))
-    OmegaConf.save(config, f"{config.train.run_dir}/config.yml")
 
-    train_loader = DataLoader(
-        train_dataset,
+    test_dataset = BodyDataset(**config.test.data)
+
+    config.dataloader.shuffle = False
+    test_loader = DataLoader(
+        test_dataset,
         collate_fn=collate_fn,
         **config.dataloader,
     )
 
-    train_writer = SummaryWriter(log_dir=config.train.tb_dir)
+    # import ipdb; ipdb.set_trace()
+
     summary_fn = load_from_config(config.summary)
 
-    train(
-        model,
-        loss_fn,
-        optimizer,
-        train_loader,
-        config,
-        summary_fn=summary_fn,
-        batch_filter_fn=batch_filter_fn,
-        train_writer=train_writer,
-        saving_enabled=True,
-        logging_enabled=True,
-        summary_enabled=True,
-    )
+
+    # model = model.eval()
+    with th.no_grad():
+        test(
+            model,
+            loss_fn,
+            test_loader,
+            config,
+            summary_fn=summary_fn,
+            batch_filter_fn=batch_filter_fn,
+            test_writer=None,
+            logging_enabled=True,
+            summary_enabled=True,
+        )
 
 
 if __name__ == "__main__":
