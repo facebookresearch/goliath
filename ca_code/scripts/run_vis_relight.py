@@ -35,11 +35,12 @@ def main(config: DictConfig):
     model_dir = config.train.run_dir
     os.makedirs("tmp", exist_ok=True)
 
-    ckpt_path = f"{model_dir}/checkpoints/model.pt"
+    # ckpt_path = f"{model_dir}/checkpoints/model.pt"
+    ckpt_path = f"{model_dir}/checkpoints/600000.pt"
     if not os.path.exists(ckpt_path):
         ckpt_path = f"{model_dir}/checkpoints/latest.pt"
+        # ckpt_path = f"{model_dir}/checkpoints/600000.pt"
 
-    config.data.shuffle = False
     config.data.split = "test"
     config.data.fully_lit_only = True
     config.data.partially_lit_only = False
@@ -50,7 +51,7 @@ def main(config: DictConfig):
     static_assets = AttrDict(dataset.static_assets)
 
     config.dataloader.batch_size = 1
-    config.dataloader.num_workers = 0
+    config.dataloader.num_workers = 4
 
     dataset.cameras = ["401892"]
 
@@ -83,7 +84,7 @@ def main(config: DictConfig):
     model_p = SingleLightCycleDecorator(model, light_rotate_axis=1).to(device)
 
     # forward
-    for i, batch in tqdm(enumerate(loader)):
+    for i, batch in enumerate(tqdm(loader)):
         batch = to_device(batch, device)
         batch_filter_fn(batch)
         with th.no_grad():

@@ -35,7 +35,7 @@ def main(config: DictConfig):
 
     static_assets = AttrDict(train_dataset.static_assets)
 
-    model = load_from_config(config.model, assets=static_assets).to(device)
+    model = load_from_config(config.model, assets=static_assets).to(device).eval()
 
     loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
 
@@ -65,6 +65,10 @@ def main(config: DictConfig):
     )
 
     # import ipdb; ipdb.set_trace()
+
+    # Disable learn-only stuff
+    model.learn_blur_enabled = False
+    model.cal_enabled = False
 
     summary_fn = load_from_config(config.summary)
 
