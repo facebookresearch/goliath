@@ -109,11 +109,10 @@ class BodyDataset(Dataset):
 
         # Get list of cameras after filtering
         self.cameras_subset = set(cameras_subset or {})
+        self.cameras = list(self.get_camera_calibration().keys())
 
         self.frames_subset = set(frames_subset or {})
-        self.frames_subset = set(map(int, self.frames_subset))
-
-        self.cameras = list(self.get_camera_calibration().keys())        
+        self.frames_subset = set(map(int, self.frames_subset))        
 
     @lru_cache(maxsize=1)
     def load_shared_assets(self) -> Dict[str, Any]:
@@ -129,21 +128,20 @@ class BodyDataset(Dataset):
         """Loads and parses camera parameters"""
         with open(self.root_path / "camera_calibration.json", "r") as f:
             camera_calibration = json.load(f)["KRT"]
-
+        camera_params = {str(c["cameraId"]): c for c in camera_calibration}
         logger.info(f"Found {len(camera_calibration)} cameras in the calibration file")
 
         # We might have images for fewer cameras than there are listed in the json file
-        # image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
-        # image_zips = [x.name.split(".")[0][3:] for x in image_zips]
-        # camera_params = {str(c["cameraId"]): c for c in camera_calibration if c["cameraId"] in image_zips}
-        # logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
-
-        camera_params = {str(c["cameraId"]): c for c in camera_calibration}
+        image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
+        image_zips = set([x.name.split(".")[0][3:] for x in image_zips])
+        camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in image_zips} 
+        logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
         
         # Filter for cameras in the passed subset
         if self.cameras_subset:
             cameras_subset = set(self.cameras_subset)  # No-op if already a set
             camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in cameras_subset}
+
             logger.info(f"Left with {len(camera_params)} cameras after filtering for passed camera subset")
 
         return camera_params

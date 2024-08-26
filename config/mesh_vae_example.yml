@@ -1,15 +1,15 @@
 # by default assuming this is being run in `goliath/`
-root_dir: ./
+root_dir: /uca/julieta/oss/goliath/
 
 data:
-  root_path: ${root_dir}/data/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody
-  shared_assets_path: ${root_dir}/data/shared/static_assets_body.pt
+  root_path: ${root_dir}/s--20230306--1509--AXE977--pilot--ProjectGoliath--ClothedBody--134cams/
+  shared_assets_path: ${root_dir}/shared/static_assets_body.pt
   split: train
-  shuffle: True
 
 dataloader:
   batch_size: 4
   num_workers: 8
+  shuffle: True
 
 model_name: mesh_vae
 
@@ -172,3 +172,57 @@ train:
   summary_every_n_steps: 10
   ckpt_every_n_steps: 10_000
   clip_grad_norm: 1.0
+
+
+test_path: /checkpoint/avatar/julietamartinez/goliath/body/AXE977/ClothedBody/1/
+
+test:
+  ckpt:
+    ckpt_path: ${test_path}/checkpoints/latest.pt
+    strict: True
+    map_location: cuda:0
+  vis_path: ${test_path}/viz
+  log_every_n_steps: 1
+  data:
+    root_path: ${data.root_path}
+    shared_assets_path: ${data.shared_assets_path}
+    split: test
+    fully_lit_only: False
+    cameras_subset: [
+      "400933",
+      "402403",
+      "402363",
+      "402431",
+      "402634",
+      "401543",
+      "401246",
+      "402628",
+      "401195",
+      "402629",
+      "402401",
+      "402367",
+    ]
+    frames_subset: [
+      # 13038,
+      # 13078,
+      # 13298,
+      # 13326,
+      # 13497,
+      # 13628,
+      # 13791,
+      # 14106,
+      # 14299,
+      # 14442,
+      # 14528,
+      # 45818,
+      # 46002,
+      # 46132,
+      # 46165,
+      # 46255,
+      # 46294,
+      # 46463,
+      # 46494,
+      # 46609,
+      # 46750,
+      # 46995,
+    ]

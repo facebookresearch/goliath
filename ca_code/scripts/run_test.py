@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 from pathlib import Path
 import logging
+import random
 import os
 import sys
 from typing import List
@@ -52,7 +53,7 @@ def main(config: DictConfig):
         "tgt_key": "image",
         "mask_key": "image_weight",
         "weight": 1.,
-        "data_range": 255. if "hand" in config.data.root_path.lower() else 1.
+        "data_range": 255. if ("hand" in config.data.root_path.lower() or "body" in config.data.root_path.lower()) else 1.
     }
     
     loss_fn = load_from_config(config.loss, assets=static_assets).to(device)
@@ -67,6 +68,10 @@ def main(config: DictConfig):
     logger.info(OmegaConf.to_yaml(config))
 
     test_dataset = BodyDataset(**config.test.data)
+    
+    # NOTE(julieta) fix seed so frames are consistent
+    frames = test_dataset.get_frame_list()
+    test_dataset.frames_subset = sorted(random.sample(frames, 12))
 
     config.dataloader.shuffle = False
     config.dataloader.batch_size = 1
@@ -78,7 +83,9 @@ def main(config: DictConfig):
 
     # Disable learn-only stuff
     model.learn_blur_enabled = False
-    model.cal_enabled = False
+    
+    # TODO(julieta) disable for head and hands, enable for bodies
+    # model.cal_enabled = False
 
     summary_fn = load_from_config(config.summary)
 

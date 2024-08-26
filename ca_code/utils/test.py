@@ -86,7 +86,7 @@ def test(
             # vis
             if vis_path:
 
-                if "hand" in str(vis_path):
+                if "hand" in str(vis_path) or "body" in str(vis_path):
                     preds["rgb"] = preds["rgb"] / 255.0
                     batch["image"] = batch["image"] / 255.0
                 

@@ -80,7 +80,9 @@ def main(config: DictConfig):
 
     # disabling training-only stuff
     model.learn_blur_enabled = False
-    model.cal_enabled = False
+
+    # TODO(julieta) disable for head and hands, enable for bodies
+    # model.cal_enabled = False
 
     model_p = SingleLightCycleDecorator(model, light_rotate_axis=1).to(device)
 
