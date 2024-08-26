@@ -45,8 +45,8 @@ def main(config: DictConfig):
         )
     
     # Remove losses that are only computed during training
-    config.loss.losses.pop("backlit_reg")
-    config.loss.losses.pop("learn_blur")
+    config.loss.losses.pop("backlit_reg", None)
+    config.loss.losses.pop("learn_blur", None)
     config.loss.losses["psnr"] = {
         "src_key": "rgb",
         "tgt_key": "image",

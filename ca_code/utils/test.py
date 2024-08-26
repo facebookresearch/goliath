@@ -85,8 +85,14 @@ def test(
 
             # vis
             if vis_path:
+
+                if "hand" in str(vis_path):
+                    preds["rgb"] = preds["rgb"] / 255.0
+                    batch["image"] = batch["image"] / 255.0
+                
                 pred = linear2srgb(preds["rgb"]).squeeze()
                 gt = linear2srgb(batch["image"]).squeeze()
+
                 l2 = (pred - gt) ** 2
                 out = make_grid([gt, pred, l2 * 20], nrow=4)
                 save_image(out, vis_path / f"{i:04d}.png")

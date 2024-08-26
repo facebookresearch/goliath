@@ -4,11 +4,11 @@
 ### Configuration variables
 QOS='urgent_deadline'
 
-###-----------------------------------------------------------------
+z###-----------------------------------------------------------------
 CONFIG_FILE=config/rgca_example.yml
 
 CONDA_ENV="/uca/conda-envs/dgxenv-2024-08-16-07-36-10-x7977-centos9-py310-pt231/bin/activate"
-TIME='7-00:00:00'
+TIME='1:00:00'
 
 
 ###-----------------------------------------------------------------
@@ -35,7 +35,7 @@ for (( i=0; i<"${#SIDS[@]}"; i++ )); do
 SID="${SIDS[i]}"
 DATA_ROOT="${DATA_ROOTS[i]}"
 
-JOB_NAME=RGCA_${SID}
+JOB_NAME=RGCA_TES4_${SID}
 CKPT_DIR=/checkpoint/avatar/julietamartinez/goliath/RGCA/${SID}/
 
 ###-----------------------------------------------------------------
@@ -63,13 +63,12 @@ source ${CONDA_ENV}
 
 mkdir -p ${CKPT_DIR}/slurm/
 
-# Run training
-srun python -m ca_code.scripts.run_train \
+# Run test
+srun python -m ca_code.scripts.run_test \
     ${CONFIG_FILE} \
     sid=${SID} \
     data.root_path=${DATA_ROOT} \
-    test.test_path=${CKPT_DIR}
-
+    test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
 EOL
 
 ###-----------------------------------------------------------------
