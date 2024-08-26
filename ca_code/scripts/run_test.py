@@ -51,7 +51,8 @@ def main(config: DictConfig):
         "src_key": "rgb",
         "tgt_key": "image",
         "mask_key": "image_weight",
-        "weight": 1,
+        "weight": 1.,
+        "data_range": 255. if "hand" in config.data.root_path.lower() else 1.
     }
     
     loss_fn = load_from_config(config.loss, assets=static_assets).to(device)

@@ -418,6 +418,7 @@ def psnr(
     src_key: str = "rendered_rgb",
     tgt_key: str = "image",
     mask_key: str = "image_mask",
+    data_range: float = 1.,
     ddisc_key: str = "depth_disc_mask",
     mask_erode: Optional[int] = None,
 ):
@@ -437,7 +438,7 @@ def psnr(
     dev = preds[src_key].device
     
     base = th.tensor(10.).to(dev)
-    data_range = th.tensor(1.).to(dev)
+    data_range = th.tensor(data_range).to(dev)
 
     psnr_base_e = 2 * th.log(data_range) - th.log(msqerr)
     psnr_vals = psnr_base_e * (10 / th.log(base))

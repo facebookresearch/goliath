@@ -91,7 +91,6 @@ def main(config: DictConfig):
         with th.no_grad():
             preds = model_p(**batch, index=[180 + i])
 
-        import ipdb; ipdb.set_trace()
         if "hand" in model_dir:
             preds["rgb"] = preds["rgb"] / 255.0
 
