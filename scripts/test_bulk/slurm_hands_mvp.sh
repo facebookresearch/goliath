@@ -8,7 +8,7 @@ QOS='urgent_deadline'
 CONFIG_FILE=config/hand_mvp_example.yml
 
 CONDA_ENV="/uca/conda-envs/dgxenv-2024-08-16-07-36-10-x7977-centos9-py310-pt231/bin/activate"
-TIME='7-00:00:00'
+TIME='1-00:00:00'
 
 
 ###-----------------------------------------------------------------
@@ -73,12 +73,12 @@ source ${CONDA_ENV}
 mkdir -p ${CKPT_DIR}/slurm/
 
 # Run training
-srun python -m ca_code.scripts.run_train \
+srun python -m ca_code.scripts.run_test \
     ${CONFIG_FILE} \
     sid=${SID} \
     data.root_path=${DATA_ROOT} \
     data.shared_assets_path=${SHARED_ASSETS} \
-    train.run_dir=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+    test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
 EOL
 
 ###-----------------------------------------------------------------

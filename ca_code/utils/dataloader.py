@@ -131,11 +131,11 @@ class BodyDataset(Dataset):
         camera_params = {str(c["cameraId"]): c for c in camera_calibration}
         logger.info(f"Found {len(camera_calibration)} cameras in the calibration file")
 
-        # We might have images for fewer cameras than there are listed in the json file
-        image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
-        image_zips = set([x.name.split(".")[0][3:] for x in image_zips])
-        camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in image_zips} 
-        logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
+        # # We might have images for fewer cameras than there are listed in the json file
+        # image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
+        # image_zips = set([x.name.split(".")[0][3:] for x in image_zips])
+        # camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in image_zips} 
+        # logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
         
         # Filter for cameras in the passed subset
         if self.cameras_subset:
