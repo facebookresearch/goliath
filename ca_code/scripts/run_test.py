@@ -86,7 +86,8 @@ def main(config: DictConfig):
     model.learn_blur_enabled = False
     
     # TODO(julieta) disable for head and hands, enable for bodies
-    model.cal_enabled = False
+    if "hand" in config.data.root_path.lower() or "head" in config.data.root_path.lower():
+        model.cal_enabled = False
 
     summary_fn = load_from_config(config.summary)
 
