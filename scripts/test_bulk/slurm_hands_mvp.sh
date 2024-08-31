@@ -72,21 +72,21 @@ source ${CONDA_ENV}
 
 mkdir -p ${CKPT_DIR}/slurm/
 
-# # Run testing
-# srun python -m ca_code.scripts.run_test \
-#     ${CONFIG_FILE} \
-#     sid=${SID} \
-#     data.root_path=${DATA_ROOT} \
-#     data.shared_assets_path=${SHARED_ASSETS} \
-#     test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
-
-# Run viz
-srun python -m ca_code.scripts.run_vis_relight \
+# Run testing
+srun python -m ca_code.scripts.run_test \
     ${CONFIG_FILE} \
     sid=${SID} \
-    data.shared_assets_path=${SHARED_ASSETS} \
     data.root_path=${DATA_ROOT} \
-    train.run_dir=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+    data.shared_assets_path=${SHARED_ASSETS} \
+    test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+
+# # Run viz
+# srun python -m ca_code.scripts.run_vis_relight \
+#     ${CONFIG_FILE} \
+#     sid=${SID} \
+#     data.shared_assets_path=${SHARED_ASSETS} \
+#     data.root_path=${DATA_ROOT} \
+#     train.run_dir=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
 
 EOL
 

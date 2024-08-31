@@ -104,7 +104,7 @@ test_path: /checkpoint/avatar/julietamartinez/goliath/RGCA/AXE977/1/
 
 test:
   ckpt:
-    ckpt_path: ${test_path}/checkpoints/latest.pt
+    ckpt_path: ${test_path}/checkpoints/600000.pt
     strict: True
     map_location: cuda:0
   vis_path: ${test_path}/viz
