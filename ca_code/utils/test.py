@@ -20,6 +20,7 @@ from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import OmegaConf, DictConfig
 
+from collections import defaultdict
 from torch.optim.lr_scheduler import LRScheduler
 from ca_code.utils.image import linear2srgb
 
@@ -59,7 +60,9 @@ def test(
     summary_enabled: bool = True,
     iteration: int = 0,
     device: Optional[Union[th.device, str]] = "cuda:0",
-) -> None:
+) -> Dict[str, float]:
+
+    loss_means = defaultdict(list)
 
     for i, batch in enumerate(test_data):
 
@@ -85,16 +88,20 @@ def test(
 
             # vis
             if vis_path:
-
+                
                 if "hand" in str(vis_path) or "body" in str(vis_path):
                     preds["rgb"] = preds["rgb"] / 255.0
                     batch["image"] = batch["image"] / 255.0
                 
+                # import ipdb; ipdb.set_trace()
+                mask = batch["segmentation_fgbg"].squeeze()
                 pred = linear2srgb(preds["rgb"]).squeeze()
                 gt = linear2srgb(batch["image"]).squeeze()
 
-                l2 = (pred - gt) ** 2
-                out = make_grid([gt, pred, l2 * 20], nrow=4)
+                l2 = ((pred - gt) * mask) ** 2
+
+                mask = th.stack([mask, mask, mask], dim=0)
+                out = make_grid([gt, pred, mask, l2 * 20], nrow=4)
                 save_image(out, vis_path / f"{i:04d}.png")
 
         if (
@@ -106,6 +113,10 @@ def test(
                 test_writer.add_scalar(f"Losses/{name}", value, global_step=iteration)
             test_writer.flush()
 
+        for name, value in _loss_dict.items():
+            loss_means[name].append(value)
+
+
         if (
             summary_enabled
             and summary_fn is not None
@@ -115,3 +126,8 @@ def test(
             summaries = summary_fn(preds, batch)
             for name, value in summaries.items():
                 test_writer.add_image(f"Images/{name}", value, global_step=iteration)
+
+    for name, value in _loss_dict.items():
+        loss_means[name] = np.mean(value)
+
+    return loss_means

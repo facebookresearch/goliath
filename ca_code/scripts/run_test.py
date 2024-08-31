@@ -51,7 +51,7 @@ def main(config: DictConfig):
     config.loss.losses["psnr"] = {
         "src_key": "rgb",
         "tgt_key": "image",
-        "mask_key": "image_weight",
+        "mask_key": "segmentation_fgbg",
         "weight": 1.,
         "data_range": 255. if ("hand" in config.data.root_path.lower() or "body" in config.data.root_path.lower()) else 1.
     }
@@ -75,6 +75,7 @@ def main(config: DictConfig):
 
     config.dataloader.shuffle = False
     config.dataloader.batch_size = 1
+    # config.dataloader.num_workers = 0
     test_loader = DataLoader(
         test_dataset,
         collate_fn=collate_fn,
@@ -95,7 +96,7 @@ def main(config: DictConfig):
         os.makedirs(vis_path, exist_ok=True)
 
     with th.no_grad():
-        test(
+        loss_means = test(
             model,
             loss_fn,
             test_loader,
@@ -108,6 +109,7 @@ def main(config: DictConfig):
             summary_enabled=True,
         )
 
+    print(loss_means)
 
 if __name__ == "__main__":
 

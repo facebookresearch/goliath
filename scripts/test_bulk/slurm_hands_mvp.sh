@@ -44,7 +44,7 @@ DATA_ROOT="${DATA_ROOTS[i]}"${HAND_SIDE}
 SHARED_ASSETS=/uca/julieta/oss/goliath/shared/static_assets_hand_${HAND_SIDE}.pt
 
 ###-----------------------------------------------------------------
-JOB_NAME=HAND_MVP_${SID}_${HAND_SIDE}
+JOB_NAME=TEST_HAND_MVP_${SID}_${HAND_SIDE}
 CKPT_DIR=/checkpoint/avatar/julietamartinez/goliath/hand_mvp/${SID}/${HAND_SIDE}
 
 ###-----------------------------------------------------------------
@@ -72,13 +72,22 @@ source ${CONDA_ENV}
 
 mkdir -p ${CKPT_DIR}/slurm/
 
-# Run training
-srun python -m ca_code.scripts.run_test \
+# # Run testing
+# srun python -m ca_code.scripts.run_test \
+#     ${CONFIG_FILE} \
+#     sid=${SID} \
+#     data.root_path=${DATA_ROOT} \
+#     data.shared_assets_path=${SHARED_ASSETS} \
+#     test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+
+# Run viz
+srun python -m ca_code.scripts.run_vis_relight \
     ${CONFIG_FILE} \
     sid=${SID} \
-    data.root_path=${DATA_ROOT} \
     data.shared_assets_path=${SHARED_ASSETS} \
-    test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+    data.root_path=${DATA_ROOT} \
+    train.run_dir=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+
 EOL
 
 ###-----------------------------------------------------------------

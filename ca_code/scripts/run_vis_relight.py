@@ -33,7 +33,7 @@ def main(config: DictConfig):
     device = th.device("cuda:0")
 
     model_dir = config.train.run_dir
-    os.makedirs("tmp", exist_ok=True)
+    os.makedirs(f"{model_dir}/tmp", exist_ok=True)
 
     # ckpt_path = f"{model_dir}/checkpoints/model.pt"
     ckpt_path = f"{model_dir}/checkpoints/600000.pt"
@@ -76,13 +76,12 @@ def main(config: DictConfig):
     load_checkpoint(
         ckpt_path,
         modules={"model": model},
+        strict=False,
     )
 
     # disabling training-only stuff
     model.learn_blur_enabled = False
-
-    # TODO(julieta) disable for head and hands, enable for bodies
-    # model.cal_enabled = False
+    model.cal_enabled = False
 
     model_p = SingleLightCycleDecorator(model, light_rotate_axis=1).to(device)
 
@@ -98,13 +97,13 @@ def main(config: DictConfig):
 
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
-        save_image(rgb_preds_grid, f"tmp/{i}.png")
+        save_image(rgb_preds_grid, f"{model_dir}/tmp/{i}.png")
 
         if i > 256:
             break
 
     os.system(
-        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_point.mp4 -y"
+        f"ffmpeg -y -framerate 30 -i '{model_dir}/tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}/_point.mp4 -y"
     )
 
     # download 1k hdr from https://polyhaven.com/a/metro_noord
@@ -124,13 +123,13 @@ def main(config: DictConfig):
 
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
-        save_image(rgb_preds_grid, f"tmp/{i}.png")
+        save_image(rgb_preds_grid, f"{model_dir}/tmp/{i}.png")
 
         if i > 256:
             break
 
     os.system(
-        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_env.mp4 -y"
+        f"ffmpeg -y -framerate 30 -i '{model_dir}/tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}/_env.mp4 -y"
     )
 
 

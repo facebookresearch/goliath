@@ -69,6 +69,13 @@ srun python -m ca_code.scripts.run_test \
     sid=${SID} \
     data.root_path=${DATA_ROOT} \
     test_path=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
+
+# # Run viz
+# srun python -m ca_code.scripts.run_vis_relight \
+#     ${CONFIG_FILE} \
+#     sid=${SID} \
+#     data.root_path=${DATA_ROOT} \
+#     train.run_dir=${CKPT_DIR}/"\${SLURM_ARRAY_TASK_ID}"
 EOL
 
 ###-----------------------------------------------------------------
