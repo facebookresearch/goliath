@@ -4,3 +4,4 @@ numpy
 torchvision
 omegaconf>=2.2.3
 drtk
+gsplat
