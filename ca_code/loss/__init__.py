@@ -412,6 +412,41 @@ def rgb_l1(
 
 
 @register_loss_by_fn()
+def psnr(
+    preds,
+    targets,
+    src_key: str = "rendered_rgb",
+    tgt_key: str = "image",
+    mask_key: str = "image_mask",
+    data_range: float = 1.,
+    ddisc_key: str = "depth_disc_mask",
+    mask_erode: Optional[int] = None,
+):
+    mask = targets.get(mask_key, preds.get(mask_key, None))
+    if mask is None:
+        mask = th.ones_like(preds[src_key])
+    if mask_erode is not None:
+        mask = erode(mask.to(th.float32), mask_erode).to(th.bool)
+    if ddisc_key in preds:
+        try:
+            mask = mask * (1 - preds[ddisc_key])
+        except Exception:
+            mask = mask * ~preds[ddisc_key]
+
+    msqerr = ((preds[src_key] - targets[tgt_key]) * mask).pow(2).mean()
+
+    dev = preds[src_key].device
+    
+    base = th.tensor(10.).to(dev)
+    data_range = th.tensor(data_range).to(dev)
+
+    psnr_base_e = 2 * th.log(data_range) - th.log(msqerr)
+    psnr_vals = psnr_base_e * (10 / th.log(base))
+    return psnr_vals
+
+
+
+@register_loss_by_fn()
 def mask_l1(
     preds, targets, src_key: str = "rendered_mask", tgt_key: str = "image_mask"
 ):

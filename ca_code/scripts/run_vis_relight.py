@@ -33,13 +33,14 @@ def main(config: DictConfig):
     device = th.device("cuda:0")
 
     model_dir = config.train.run_dir
-    os.makedirs("tmp", exist_ok=True)
+    os.makedirs(f"{model_dir}/tmp", exist_ok=True)
 
-    ckpt_path = f"{model_dir}/checkpoints/model.pt"
+    # ckpt_path = f"{model_dir}/checkpoints/model.pt"
+    ckpt_path = f"{model_dir}/checkpoints/600000.pt"
     if not os.path.exists(ckpt_path):
         ckpt_path = f"{model_dir}/checkpoints/latest.pt"
+        # ckpt_path = f"{model_dir}/checkpoints/600000.pt"
 
-    config.data.shuffle = False
     config.data.split = "test"
     config.data.fully_lit_only = True
     config.data.partially_lit_only = False
@@ -49,8 +50,9 @@ def main(config: DictConfig):
 
     static_assets = AttrDict(dataset.static_assets)
 
+    config.dataloader.shuffle = False
     config.dataloader.batch_size = 1
-    config.dataloader.num_workers = 0
+    config.dataloader.num_workers = 4
 
     dataset.cameras = ["401892"]
 
@@ -74,6 +76,7 @@ def main(config: DictConfig):
     load_checkpoint(
         ckpt_path,
         modules={"model": model},
+        strict=False,
     )
 
     # disabling training-only stuff
@@ -83,7 +86,7 @@ def main(config: DictConfig):
     model_p = SingleLightCycleDecorator(model, light_rotate_axis=1).to(device)
 
     # forward
-    for i, batch in tqdm(enumerate(loader)):
+    for i, batch in enumerate(tqdm(loader)):
         batch = to_device(batch, device)
         batch_filter_fn(batch)
         with th.no_grad():
@@ -94,13 +97,13 @@ def main(config: DictConfig):
 
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
-        save_image(rgb_preds_grid, f"tmp/{i}.png")
+        save_image(rgb_preds_grid, f"{model_dir}/tmp/{i}.png")
 
         if i > 256:
             break
 
     os.system(
-        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_point.mp4 -y"
+        f"ffmpeg -y -framerate 30 -i '{model_dir}/tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}/_point.mp4 -y"
     )
 
     # download 1k hdr from https://polyhaven.com/a/metro_noord
@@ -112,7 +115,7 @@ def main(config: DictConfig):
     ).to(device)
 
     # forward
-    for i, batch in tqdm(enumerate(loader)):
+    for i, batch in enumerate(tqdm(loader)):
         batch = to_device(batch, device)
         batch_filter_fn(batch)
         with th.no_grad():
@@ -120,13 +123,13 @@ def main(config: DictConfig):
 
         # visualizing
         rgb_preds_grid = make_grid(linear2srgb(preds["rgb"]), nrow=4)
-        save_image(rgb_preds_grid, f"tmp/{i}.png")
+        save_image(rgb_preds_grid, f"{model_dir}/tmp/{i}.png")
 
         if i > 256:
             break
 
     os.system(
-        f"ffmpeg -y -framerate 30 -i 'tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}_env.mp4 -y"
+        f"ffmpeg -y -framerate 30 -i '{model_dir}/tmp/%d.png' -c:v libx264 -g 10 -pix_fmt yuv420p {model_dir}/_env.mp4 -y"
     )
 
 

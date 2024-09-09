@@ -14,7 +14,7 @@ from enum import Enum
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -28,7 +28,7 @@ from ca_code.utils.obj import load_obj
 from PIL import Image
 from pytorch3d.io import load_ply, save_ply
 from scipy.ndimage.morphology import binary_dilation
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 from torchvision.transforms.functional import pil_to_tensor
 
@@ -62,10 +62,7 @@ def get_capture_type(capture_name: str) -> CaptureType:
     )
 
 
-logger = logging.getLogger(__name__)
-
-
-class BodyDataset(IterableDataset):
+class BodyDataset(Dataset):
     def __init__(
         self,
         root_path: Path,
@@ -73,16 +70,28 @@ class BodyDataset(IterableDataset):
         split: str,
         fully_lit_only: bool = True,
         partially_lit_only: bool = False,
-        shuffle: bool = True,
+        cameras_subset: Optional[Iterable[str]] = None,
+        frames_subset: Optional[Iterable[int]] = None,
     ):
-        if split not in ["train", "test"]:
+        """
+        Dataset of heads, hands or bodies
+
+        root_path: The path where the data is located on disk
+        shared_assets_path: pt file with shared assets such as common topology
+        split: Either "train" or "test"
+        fully_lit_only: Whether to use only fully lit frames
+        partial_lit_only: Whether to use only partially lit frames
+        cameras: Subset of cameras to use, useful for validation/testing
+        frames: Subset of frames to use, useful for validation/testing
+        """
+
+        if split not in {"train", "test"}:
             raise ValueError(f"Invalid split: {split}. Options are 'train' and 'test'")
         self.root_path: Path = Path(root_path)
         self.shared_assets_path: Path = shared_assets_path
         self.split: str = split
         self.fully_lit_only: bool = fully_lit_only
         self.partially_lit_only: bool = partially_lit_only
-        self.shuffle: bool = shuffle
 
         self.capture_type: CaptureType = get_capture_type(self.root_path.name)
         self._get_fn: Callable = {
@@ -98,7 +107,12 @@ class BodyDataset(IterableDataset):
             CaptureType.HAND: self._static_get_for_hand,
         }.get(self.capture_type)
 
+        # Get list of cameras after filtering
+        self.cameras_subset = set(cameras_subset or {})
         self.cameras = list(self.get_camera_calibration().keys())
+
+        self.frames_subset = set(frames_subset or {})
+        self.frames_subset = set(map(int, self.frames_subset))        
 
     @lru_cache(maxsize=1)
     def load_shared_assets(self) -> Dict[str, Any]:
@@ -111,9 +125,26 @@ class BodyDataset(IterableDataset):
 
     @lru_cache(maxsize=1)
     def get_camera_calibration(self) -> Dict[str, Any]:
+        """Loads and parses camera parameters"""
         with open(self.root_path / "camera_calibration.json", "r") as f:
             camera_calibration = json.load(f)["KRT"]
-        return {str(c["cameraId"]): c for c in camera_calibration}
+        camera_params = {str(c["cameraId"]): c for c in camera_calibration}
+        logger.info(f"Found {len(camera_calibration)} cameras in the calibration file")
+
+        # We might have images for fewer cameras than there are listed in the json file
+        image_zips = set([x for x in (self.root_path / "image").iterdir() if x.is_file()])
+        image_zips = set([x.name.split(".")[0][3:] for x in image_zips])
+        camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in image_zips} 
+        logger.info(f"Left with {len(camera_params)} cameras after filtering for zips present in image/ folder")
+        
+        # Filter for cameras in the passed subset
+        if self.cameras_subset:
+            cameras_subset = set(self.cameras_subset)  # No-op if already a set
+            camera_params = {cid: cparams for cid, cparams in camera_params.items() if cid in cameras_subset}
+
+            logger.info(f"Left with {len(camera_params)} cameras after filtering for passed camera subset")
+
+        return camera_params
 
     @lru_cache(maxsize=1)
     def get_camera_parameters(self, camera: str, ds: int = 2) -> Dict[str, Any]:
@@ -141,12 +172,21 @@ class BodyDataset(IterableDataset):
     def get_camera_list(self) -> List[str]:
         return self.cameras
 
+    def filter_frame_list(self, frame_list: List[int]) -> List[int]:
+        frames = frame_list
+        if self.frames_subset:
+            frames = list(set(frame_list).intersection(self.frames_subset))
+        return frames
+
     @lru_cache(maxsize=2)
     def get_frame_list(
-        self, fully_lit_only: bool = False, partially_lit_only: bool = False
+        self,
+        fully_lit_only: bool = False,
+        partially_lit_only: bool = False,
     ) -> List[int]:
         # fully lit only and partially lit only cannot be enabled at the same time
         assert not (fully_lit_only and partially_lit_only)
+
         df = pd.read_csv(self.root_path / f"frame_splits_list.csv")
         frame_list = df[df.split == self.split].frame.tolist()
 
@@ -155,13 +195,16 @@ class BodyDataset(IterableDataset):
             or self.capture_type is CaptureType.BODY
         ):
             # All frames in Body captures are fully lit
-            return list(frame_list)
+            frame_list = list(frame_list)
+            return self.filter_frame_list(frame_list) 
 
         if fully_lit_only:
             fully_lit = {
                 frame for frame, index in self.load_light_pattern() if index == 0
             }
-            return [f for f in fully_lit if f in frame_list]
+            frame_list = [f for f in fully_lit if f in frame_list]
+            return self.filter_frame_list(frame_list)
+
         else:
             light_pattern = self.load_light_pattern_meta()["light_patterns"]
             # NOTE: it only filters the frames with 5 lights on
@@ -170,7 +213,8 @@ class BodyDataset(IterableDataset):
                 for frame, index in self.load_light_pattern()
                 if len(light_pattern[index]["light_index_durations"]) == 5
             }
-            return [f for f in partially_lit if f in frame_list]
+            frame_list = [f for f in partially_lit if f in frame_list]
+            return self.filter_frame_list(frame_list) 
 
     @lru_cache(maxsize=CACHE_LENGTH)
     def load_3d_keypoints(self, frame: int) -> Optional[Dict[str, Any]]:
@@ -535,7 +579,13 @@ class BodyDataset(IterableDataset):
             light_intensity, (0, 0, 0, n_lights_all - n_lights), "constant", 0
         )
 
-        # segmentation_parts = self.load_segmentation_parts(frame, camera)
+        segmentation_parts = self.load_segmentation_parts(frame, camera)
+        c, h, w = segmentation_parts.shape
+        # import ipdb; ipdb.set_trace()
+        if h == 1024:
+            with torch.no_grad():
+                segmentation_parts = F.interpolate(segmentation_parts[None, :, :, :], scale_factor=2, mode='bilinear')[0]
+        segmentation_fgbg = segmentation_parts != 0.0
         # color_mean = self.load_color_mean()
         # color_var = self.load_color_variance()
         color = self.load_color(frame)
@@ -566,7 +616,8 @@ class BodyDataset(IterableDataset):
             # "template_mesh": template_mesh,
             # "light_pattern": light_pattern,
             # "light_pattern_meta": light_pattern_meta,
-            # "segmentation_parts": segmentation_parts,
+            "segmentation_parts": segmentation_parts,
+            "segmentation_fgbg": segmentation_fgbg,
             # "color_mean": color_mean,
             # "color_variance": color_var,
             # "scan_mesh": scan_mesh,
@@ -654,36 +705,28 @@ class BodyDataset(IterableDataset):
         else:
             return sample
 
-    def __iter__(self):
+
+    def __getitem__(self, idx):
+        # TODO(julieta) don't filter every time (it's cached, but still bad practice here)
         frame_list = self.get_frame_list(
             fully_lit_only=self.fully_lit_only,
             partially_lit_only=self.partially_lit_only,
         )
         camera_list = self.get_camera_list()
 
-        # NOTE: not a real shuffle, just a random
-        if self.shuffle:
-            while True:
-                frame = np.random.choice(frame_list)
-                camera = np.random.choice(camera_list)
-                try:
-                    yield self.get(frame, camera)
-                except Exception as e:
-                    logger.warning(
-                        f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
-                    )
-                    logger.warning(f"{e}")
+        frame = frame_list[idx // len(camera_list)]
+        camera = camera_list[idx % len(camera_list)]
 
-        else:
-            for frame in frame_list:
-                for camera in camera_list:
-                    try:
-                        yield self.get(frame, camera)
-                    except Exception as e:
-                        logger.warning(
-                            f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
-                        )
-                        logger.warning(f"{e}")
+        try:
+            data = self.get(frame, camera)
+        except Exception as e:
+            logger.warning(
+                f"error when loading frame_id=`{frame}`, camera_id=`{camera}`, skipping"
+            )
+            return None
+
+        return data
+
 
     def __len__(self):
         return len(
@@ -709,22 +752,53 @@ def collate_fn(items):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=Path, help="Root path to capture data")
-    parser.add_argument("-s", "--split", type=str, choices=["train", "test"])
+    parser.add_argument("-s", "--split", type=str, default="train", choices=["train", "test"])
     args = parser.parse_args()
 
     dataset = BodyDataset(
         root_path=args.input,
         split=args.split,
         shared_assets_path=None,
-        shuffle=False,
         fully_lit_only=False,
+        cameras_subset=[
+            "401645",
+            "401964",
+            "402501",
+            "402597",
+            # "402801",
+            # "402871",
+            # "402873",
+            # "402956",
+            # "402969",
+            # "402978",
+            # "402982",
+            # "403066",
+        ],
+        frames_subset=[
+            "27533",
+            "28585",
+            "28739",
+            "28874",
+            # "29296",
+            # "29728",
+            # "139248",
+            # "140399",
+            # "140436",
+            # "140689",
+            # "140968",
+            # "141333",
+        ]
     )
-    # dataloader = DataLoader(
-    #     dataset,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=4,
-    # )
+    dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True,
+        num_workers=4,
+    )
 
-    for row in tqdm(dataset):
-        continue
+    # for row in tqdm(dataset):
+    # for row in tqdm(dataloader):
+    #     continue
+
+    for i, row in enumerate(dataloader):
+        print(i)

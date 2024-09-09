@@ -43,7 +43,7 @@ class RenderLayer(nn.Module):
 
         v_pix = transform(verts, K=K, Rt=Rt)
 
-        depth_img, index_img = rasterize(v_pix, self.vi, self.h, self.w)
+        index_img = rasterize(v_pix, self.vi, self.h, self.w)
         depth_img, bary_img = render(v_pix, self.vi, index_img)
 
         vt_img = interpolate(
@@ -69,9 +69,8 @@ class RenderLayer(nn.Module):
                 bary_img=bary_img,
                 img=img,
                 index_img=index_img,
-                adjacency_id_check=False,
             )
-
+        
         return {
             "render": img,
             "depth_img": depth_img,

@@ -13,6 +13,7 @@ import typing
 import inspect
 from typing import Callable, Dict, Any, Iterator, Mapping, Optional, Union, Tuple, List
 import torch.nn as nn
+import shutil
 
 from collections import OrderedDict, deque
 from torch.utils.tensorboard import SummaryWriter
@@ -137,6 +138,7 @@ def load_checkpoint(
             ckpt_path = os.path.join(ckpt_path, f"{iteration:06d}.pt")
     logger.info(f"loading checkpoint {ckpt_path}")
     ckpt_dict = th.load(ckpt_path, map_location=map_location)
+
     for name, mod in modules.items():
         params = ckpt_dict[name]
         if ignore_names is not None and name in ignore_names:
@@ -189,9 +191,9 @@ def train(
             loss.item() > 10 * prev_loss or th.isnan(loss) or th.isinf(loss)
         )
         if exploded:
-            logger.info(f"explosion detected: iter={iteration}: frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")
+            logger.info(f"explosion detected: iter={iteration}: loss={loss.item()} frame_id=`{batch['frame_id']}`, camera_id=`{batch['camera_id']}`")
         else:
-            loss_history.append(loss.item())
+            loss_history.append(loss)
 
         if exploded:
             load_checkpoint(
@@ -249,6 +251,11 @@ def train(
                 {"model": model, "optimizer": optimizer},
                 iteration=iteration,
             )
+            shutil.copyfile(
+                f"{config.train.ckpt_dir}/latest.pt",
+                f"{config.train.ckpt_dir}/{iteration:06d}.pt"
+            ) 
+
 
         if (
             lr_scheduler is not None

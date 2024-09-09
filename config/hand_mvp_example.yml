@@ -1,17 +1,17 @@
-
-# a dummy example
 sid: AXE977
 hand_side: left
+root_dir: /uca/julieta/oss/goliath/
+
 data:
-  root_path: /mnt/captures/oss/goliath/m--20230306--0839--AXE977--pilot--ProjectGoliath--Hands--${hand_side}
-  shared_assets_path: /mnt/captures/oss/goliath/shared/static_assets_hand_${hand_side}.pt
+  root_path: ${root_dir}/m--20230306--0839--AXE977--pilot--ProjectGoliath--Hands--${hand_side}
+  shared_assets_path: ${root_dir}/shared/static_assets_hand_${hand_side}.pt
   split: train
-  shuffle: True
   fully_lit_only: True
 
 dataloader:
   batch_size: 4
   num_workers: 8
+  shuffle: True
 
 model_name: hand_mvp
 
@@ -76,7 +76,51 @@ train:
   ckpt_dir: ${.run_dir}/checkpoints
 
   # CHANGE ME
-  n_max_iters: 400000
+  n_max_iters: 800_000
   log_every_n_steps: 100
-  summary_every_n_steps: 1000
-  ckpt_every_n_steps: 1000
+  summary_every_n_steps: 1_000
+  ckpt_every_n_steps: 10_000
+
+
+test_path: /checkpoint/avatar/julietamartinez/goliath/hand_mvp/AXE977/left/1/
+
+test:
+  ckpt:
+    ckpt_path: ${test_path}/checkpoints/latest.pt
+    strict: True
+    map_location: cuda:0
+  vis_path: ${test_path}/viz
+  log_every_n_steps: 1
+  data:
+    root_path: ${data.root_path}
+    shared_assets_path: ${data.shared_assets_path}
+    split: test
+    fully_lit_only: False
+    cameras_subset: [
+      "401645",
+      "401964",
+      "402501",
+      "402597",
+      "402801",
+      "402871",
+      "402873",
+      "402956",
+      "402969",
+      "402978",
+      "402982",
+      "403066",
+    ]
+    frames_subset: [
+      # 76377,
+      # 76414,
+      # 76439,
+      # 76477,
+      # 76760,
+      # 76807,
+      # 77159,
+      # 77266,
+      # 77384,
+      # 77397,
+      # 77454,
+      # 77920,
+    ]
