@@ -64,8 +64,8 @@ class EnvSpinDecorator(th.nn.Module):
         multisin = th.sin(
             (th.arange(self.image.shape[1]) + 0.5) * np.pi / self.image.shape[1]
         )[None, None, :, None]
+        mipmap = [self.image[None].clone()]
         image = self.image[None].clone() * multisin
-        mipmap = [image]
         num_sample = 4096
         for i in range(self.miplevel - 1):
             sigma = (i + 1) * self.sigma_step
