@@ -582,9 +582,12 @@ def loss_negcolor(preds, batch=None, key: str = "diff_color"):
 def loss_l2_reg(preds, batch=None, key: str = "spec_dnml"):
     return preds[key].pow(2).mean()
 
-@register_loss_by_fn("l1_reg")
-def loss_l2_reg(preds, batch=None, key: str = "spec_dnml"):
-    return preds[key].abs().mean()
+@register_loss_by_fn("list_l1_reg")
+def loss_list_l1_reg(preds, batch=None, key: str = "spec_dnml"):
+    loss = 0
+    for term in preds[key]:
+        loss += term.abs().mean()
+    return loss
 
 @register_loss_by_fn("backlit_reg")
 def loss_backlight_reg(

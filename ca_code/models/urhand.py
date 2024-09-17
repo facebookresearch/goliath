@@ -40,11 +40,10 @@ from ca_code.utils.geom import (
 from ca_code.utils.image import linear2displayBatch
 import ca_code.nn.layers as la
 from ca_code.utils.torchutils import index
-# from ca_code.utils.render_drtk import RenderLayer
-from ca_code.utils.render_pytorch3d import RenderLayer
+from ca_code.utils.render_drtk import RenderLayer
 from pytorch3d.transforms import axis_angle_to_matrix, euler_angles_to_matrix, matrix_to_axis_angle
 from scipy.ndimage import gaussian_filter
-# from care.utils.lighting import get_shadow_map
+# TODO: import get_shadow_map
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ class FeatEncoderUNet(nn.Module):
         return z, gb
 
 class DisplacementUNet(nn.Module):
-    def __init__(self, uv_size, init_uv_size, output_scale, n_enc_dims=[64, 64, 64, 64, 64, 64]):
+    def __init__(self, uv_size, init_uv_size, output_scale, pose_feat_dim, n_enc_dims=[64, 64, 64, 64, 64, 64]):
         super().__init__()
         self.uv_size = uv_size
         self.init_uv_size = init_uv_size
@@ -116,7 +115,7 @@ class DisplacementUNet(nn.Module):
         self.sizes = [init_uv_size * 2 ** s for s in range(self.n_blocks + 1)]
 
         in_feats = 2 * 3 # id mesh & normal
-        init_channels = 69
+        init_channels = pose_feat_dim
         
         self.n_enc_dims = [
             (in_feats, n_enc_dims[0]),
@@ -248,8 +247,8 @@ class ConvTeacherDecoder(nn.Module):
         assets,
         uv_size,
         init_uv_size,
-        n_joint_enc_dims,
-        n_view_enc_dims,
+        pose_enc_dims,
+        disp_enc_dims,
         disp_scale,
         init_channels=128,
         min_channels=16,
@@ -297,10 +296,9 @@ class ConvTeacherDecoder(nn.Module):
 
         self.uv_size = uv_size
         self.init_uv_size = init_uv_size
-        self.n_view_enc_dims = n_view_enc_dims
-        self.n_joint_enc_dims = n_joint_enc_dims
+        self.pose_enc_dims = pose_enc_dims
         if self.view_cond:
-            self.n_joint_enc_dims += 3
+            self.n_joint_enc_dims = self.pose_enc_dims + 3 + disp_enc_dims[-1]
         self.featenc = FeatEncoderUNet(1, 1 * len(self.spec_powers), 128, m = 1)
         nc = [128, 256, 128, 128, 64, 32, 16, 4]
         self.texmod0 = nn.ModuleList()
@@ -334,12 +332,12 @@ class ConvTeacherDecoder(nn.Module):
             self.init_uv_size,
         )
 
-        self.geo_refiner = DisplacementUNet(uv_size, init_uv_size, disp_scale)
+        self.geo_refiner = DisplacementUNet(uv_size, init_uv_size, disp_scale, self.pose_enc_dims, disp_enc_dims)
         self.rl = RenderLayer(
             h=1024,
             w=1024,                 
             vt=self.geo_fn.vt,
-            vi=self.geo_fn.vi,
+            vi=self.geo_fn.vi.int(),
             vti=self.geo_fn.vti,
             flip_uvs=False
         )
@@ -374,7 +372,7 @@ class ConvTeacherDecoder(nn.Module):
         tri_xyz = verts_rec[:, idxs]
 
         # interpolate normal for smoothness
-        vert_nml = vert_normals(verts_rec, self.geo_fn.vi.expand(B, -1, -1))
+        vert_nml = vert_normals(verts_rec, self.geo_fn.vi)
         face_idxs = self.geo_fn.face_index_image[mask]
         vi_img = self.geo_fn.vi[face_idxs]
         bary_img = self.geo_fn.bary_image[mask]
@@ -399,6 +397,7 @@ class ConvTeacherDecoder(nn.Module):
             vert_mask = (verts_rec.detach() - self.geo_fn.from_uv(p_uv).detach()).abs() > 1
         v_uv = F.normalize(cam_pos[..., None, None] - p_uv, dim=1)
         light_intensity = light_intensity[..., None, None]
+        lightmap = None
 
         # compute shadow map
         if self.shadow:
@@ -655,10 +654,11 @@ class AutoEncoder(nn.Module):
             assets.lbs_config_dict,
             assets.template_mesh_unscaled[None],
             assets.skeleton_scales,
-            global_scaling=[1.0, 1.0, 1.0],  # meter
+            global_scaling=[10.0, 10.0, 10.0],  # meter
         )
 
-        tex_mean = th.as_tensor(assets.tex_mean)[np.newaxis]
+        # TODO: include color mean in hand assets
+        tex_mean = th.as_tensor(assets.color_mean)[np.newaxis]
         self.register_buffer("tex_mean", F.interpolate(tex_mean, (relight.uv_size, relight.uv_size), mode="bilinear"))
 
         if cal is not None:
@@ -685,7 +685,7 @@ class AutoEncoder(nn.Module):
                 h=renderer.image_height,
                 w=renderer.image_width,
                 vt=self.geo_fn.vt,
-                vi=self.geo_fn.vi,
+                vi=self.geo_fn.vi.int(),
                 vti=self.geo_fn.vti,
                 flip_uvs=False,
             )
@@ -762,14 +762,14 @@ class AutoEncoder(nn.Module):
     ):
         index = {'camera': camera_id, 'frame': frame_id}
         tex_mean = self.tex_mean
+        bs = pose.shape[0]
         preds = {}
         mesh_world = self.lbs_fn.pose(
             th.zeros_like(self.lbs_fn.lbs_template_verts), pose
         )
-        mesh_id_only = self.lbs_fn.lbs_template_verts
-        verts_rec = mesh_world * 1000  # meter -> mm
-
-        hand_pose_aa = matrix_to_axis_angle(euler_angles_to_matrix(th.flip(pose, [2]), 'ZYX')).reshape(bs, -1)
+        mesh_id_only = self.lbs_fn.lbs_template_verts * self.lbs_fn.global_scaling[0]
+        verts_rec = mesh_world
+        hand_pose_aa = matrix_to_axis_angle(euler_angles_to_matrix(th.flip(pose.reshape(bs, -1, 3), [2]), 'ZYX')).reshape(bs, -1)
 
         relight_preds = self.decoder_relight(
             lbs_motion=hand_pose_aa.detach(),
@@ -823,12 +823,7 @@ class AutoEncoder(nn.Module):
             tex_seg = th.ones_like(tex_rec[:, :1])
             tex_rgb_seg = th.cat([tex_rec, tex_seg], dim=1)
             phys_tex_rgb_seg = th.cat([phys_tex_rec, tex_seg], dim=1)
-            green_background = th.zeros(verts_rec.shape[0], 4, self.renderer.h, self.renderer.w).to(verts_rec)
-            if not self.training and not self.force_black_bkgd:
-                green_background[:, 1, :, :] += 255.
 
-            vn = vert_normals(old_verts, self.geo_fn.vi[np.newaxis].to(th.int64))
-            vn = th.bmm(vn, Rt[:, :3, :3].permute(0, 2, 1)).contiguous()
             tmp_normal = relight_preds['feature_normal_raw'].detach()
             tmp_normal = th.bmm(tmp_normal.permute(0,  2, 3, 1).reshape(bs, -1, 3), Rt[:, :3, :3].permute(0, 2, 1))
             tmp_normal = tmp_normal.reshape(bs, 1024, 1024, 3).permute(0, 3, 1, 2)
@@ -839,17 +834,11 @@ class AutoEncoder(nn.Module):
                 feat_normal_raw,
                 K=K,
                 Rt=Rt,
-                background=green_background,
-                vn=vn,
-                output_filters=["render"],
             )
             rendered_feat_normal_raw = feat_render_preds['render'][:, :3]
             uhm_geo_mask = feat_render_preds['render'][:, 3:4]
             preds.update(old_normals=rendered_feat_normal_raw, uhm_geo_mask=uhm_geo_mask, old_normals_uv = feat_normal_raw)
 
-            # computing normals in camera space
-            vn = vert_normals(verts_rec, self.geo_fn.vi[np.newaxis].to(th.int64))
-            vn = th.bmm(vn, Rt[:, :3, :3].permute(0, 2, 1)).contiguous()
             tmp_normal = relight_preds['feature_normal'].detach()
             tmp_normal = th.bmm(tmp_normal.permute(0,  2, 3, 1).reshape(bs, -1, 3), Rt[:, :3, :3].permute(0, 2, 1))
             tmp_normal = tmp_normal.reshape(bs, 1024, 1024, 3).permute(0, 3, 1, 2)
@@ -860,9 +849,6 @@ class AutoEncoder(nn.Module):
                 feat_normal,
                 K=K,
                 Rt=Rt,
-                background=green_background,
-                vn=vn,
-                output_filters=["render"],
             )
             rendered_feat_normal = feat_render_preds['render'][:, :3]
             preds.update(normals=rendered_feat_normal, normals_uv=feat_normal)
@@ -872,18 +858,6 @@ class AutoEncoder(nn.Module):
                 tex_rgb_seg,
                 K=K,
                 Rt=Rt,
-                background=green_background,
-                vn=vn,
-                output_filters=[
-                    "render",
-                    "depth_img",
-                    "mask",
-                    "alpha",
-                    "index_img",
-                    "bary_img",
-                    "v_pix",
-                    "vn_img",
-                ],
                 edge_grad = edge_grad,
             )
             rgb_seg = render_preds["render"][:, :4].contiguous()
@@ -893,18 +867,6 @@ class AutoEncoder(nn.Module):
                 phys_tex_rgb_seg,
                 K=K,
                 Rt=Rt,
-                background=green_background,
-                vn=vn,
-                output_filters=[
-                    "render",
-                    "depth_img",
-                    "mask",
-                    "alpha",
-                    "index_img",
-                    "bary_img",
-                    "v_pix",
-                    "vn_img",
-                ],
                 edge_grad = edge_grad,
             )
             phys_rgb_seg = phys_render_preds["render"][:, :4].contiguous()
@@ -916,9 +878,6 @@ class AutoEncoder(nn.Module):
                     diff_feat,
                     K=K,
                     Rt=Rt,
-                    background=green_background,
-                    vn=vn,
-                    output_filters=["render"],
                 )
                 rendered_diff_feat = feat_render_preds['render'][:, :3]
 
@@ -929,9 +888,6 @@ class AutoEncoder(nn.Module):
                         shadow_map,
                         K=K,
                         Rt=Rt,
-                        background=green_background,
-                        vn=vn,
-                        output_filters=["render"],
                     )
                     rendered_shadow_map = feat_render_preds['render'][:, :3]
                 else:
@@ -945,9 +901,6 @@ class AutoEncoder(nn.Module):
                         uv_spec_feature,
                         K=K,
                         Rt=Rt,
-                        background=green_background,
-                        vn=vn,
-                        output_filters=["render"],
                     )
                     rendered_spec_feat.append(feat_render_preds['render'][:, :3])
                 preds.update(
@@ -966,9 +919,6 @@ class AutoEncoder(nn.Module):
                         shadow_map,
                         K=K,
                         Rt=Rt,
-                        background=green_background,
-                        vn=vn,
-                        output_filters=["render"],
                     )
                     rendered_shadow_map_raw = feat_render_preds['render'][:, :3]
                 else:
@@ -980,9 +930,6 @@ class AutoEncoder(nn.Module):
                     diff_feat,
                     K=K,
                     Rt=Rt,
-                    background=green_background,
-                    vn=vn,
-                    output_filters=["render"],
                 )
                 rendered_diff_feat_raw = feat_render_preds['render'][:, :3]
                 rendered_spec_feat_raw = []
@@ -993,9 +940,6 @@ class AutoEncoder(nn.Module):
                         uv_spec_feature,
                         K=K,
                         Rt=Rt,
-                        background=green_background,
-                        vn=vn,
-                        output_filters=["render"],
                     )
                     rendered_spec_feat_raw.append(feat_render_preds['render'][:, :3])
                 preds.update(
@@ -1016,9 +960,6 @@ class AutoEncoder(nn.Module):
                             v_seg,
                             K=K,
                             Rt=Rt,
-                            background=green_background,
-                            vn=vn,
-                            output_filters=["render"],
                         )
                         rendered_interm = interm_render_preds['render'][:, :3]
                         preds[k] = rendered_interm
@@ -1099,13 +1040,6 @@ class URHandSummary(Callable):
             make_grid(diff_rgb, nrow=nrow).permute(1, 2, 0).to(th.uint8).cpu().numpy()[..., 0]
         )
         tmp_diff_rgb = np.ascontiguousarray(cv2.applyColorMap(grid_diff_rgb, cv2.COLORMAP_JET)[..., ::-1]).copy()
-        cv2.putText(tmp_diff_rgb, "{}".format(diff_rgb_error.detach().cpu().numpy()), (200, 200), font, font_scale, text_color, font_thickness)
-        cv2.putText(tmp_diff_rgb, "{}".format(batch['_index']['frame'].detach().cpu().numpy()), (200, 400), font, font_scale, text_color, font_thickness)
-        cv2.putText(tmp_diff_rgb, " ".join(batch['_index']['camera']), (200, 600), font, font_scale, text_color, font_thickness)
-        capid = []
-        for cid in batch['_index']['capture_id']:
-            capid.append(cid[19:25])
-        cv2.putText(tmp_diff_rgb, " ".join(capid), (200, 800), font, font_scale, text_color, font_thickness)
         grid_diff_rgb = th.as_tensor(
             tmp_diff_rgb,
             device=rgb.device,
@@ -1167,7 +1101,7 @@ class URHandSummary(Callable):
         texture = texture.clip(0, 255).to(th.uint8)
 
         summaries = {
-            "progress_image": (progress_image, "png"),
-            "texture": (texture, "png"),
+            "progress_image": progress_image.permute(2, 0, 1),
+            "texture": texture.permute(2, 0, 1),
         }
         return summaries
