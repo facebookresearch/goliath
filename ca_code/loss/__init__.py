@@ -493,6 +493,49 @@ def rgb_ssim(
     else:
         return 1.0 - ssim(mask * targets[tgt_key], mask * preds[src_key])
 
+@register_loss_by_fn()
+def rgb_l1_focus(preds, targets, mask_erode=None, img_blur=False, self_mask=False):
+    if self_mask:
+        mask = preds['rendered_mask'].detach()
+    else:
+        mask = targets['image_mask']
+    if mask_erode is not None:
+        mask = erode(mask.to(th.float32), mask_erode).to(th.bool)
+    try:
+        mask = mask * (1 - preds['depth_disc_mask'])
+    except:
+        mask = mask * ~preds['depth_disc_mask']
+    if img_blur:
+        prediction = preds["rendered_rgb_blur"]
+    else:
+        prediction = preds["rendered_rgb"]
+    
+    abs_error = ((prediction - targets["image"]) * mask).abs()
+    # error should be range of 0-255
+    error_weights = abs_error / 255.
+    error_weights = th.exp(error_weights).detach()
+    return (abs_error * error_weights).mean()
+
+@register_loss_by_fn()
+# TODO: we need to normalize this properly
+def rgb_l1_phys(preds, targets, mask_erode=None, img_blur=False, self_mask=False):
+    # TODO: should this be all defined with unique names?
+    if self_mask:
+        mask = preds['rendered_mask'].detach()
+    else:
+        mask = targets['image_mask']
+    if mask_erode is not None:
+        mask = erode(mask.to(th.float32), mask_erode).to(th.bool)
+    try:
+        mask = mask * (1 - preds['depth_disc_mask'])
+    except:
+        mask = mask * ~preds['depth_disc_mask']
+    prediction = preds["rendered_phys_rgb"]
+    abs_error = ((prediction - targets["image"]) * mask).abs()
+    # error should be range of 0-255
+    error_weights = abs_error / 255.
+    error_weights = th.exp(error_weights).detach()
+    return (abs_error * error_weights).mean()
 
 @register_loss_by_fn("learn_blur")
 def learn_blur_reg_loss(preds, batch=None):
@@ -539,6 +582,9 @@ def loss_negcolor(preds, batch=None, key: str = "diff_color"):
 def loss_l2_reg(preds, batch=None, key: str = "spec_dnml"):
     return preds[key].pow(2).mean()
 
+@register_loss_by_fn("l1_reg")
+def loss_l2_reg(preds, batch=None, key: str = "spec_dnml"):
+    return preds[key].abs().mean()
 
 @register_loss_by_fn("backlit_reg")
 def loss_backlight_reg(

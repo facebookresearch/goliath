@@ -429,6 +429,45 @@ def compute_tbn_uv(tri_xyz, tri_uv):
 
     return tangent, bitangent, normal
 
+def compute_tbn_uv_given_normal(tri_xyz, tri_uv, normals, eps: float = 1e-5):
+    """Compute tangents, bitangents, normals.
+
+    Args:
+        tri_xyz: [B,N,3,3] vertex coordinates
+        tri_uv: [N,2] texture coordinates
+        normals: [B,N,3,3] normal vectors
+
+    Returns:
+        tangents, bitangents, normals
+    """
+    tri_uv = tri_uv[np.newaxis]
+
+    v01 = tri_xyz[:, :, 1] - tri_xyz[:, :, 0]
+    v02 = tri_xyz[:, :, 2] - tri_xyz[:, :, 0]
+
+    vt01 = tri_uv[:, :, 1] - tri_uv[:, :, 0]
+    vt02 = tri_uv[:, :, 2] - tri_uv[:, :, 0]
+
+    fin = vt01[..., 0] * vt02[..., 1] - vt01[..., 1] * vt02[..., 0]
+    # NOTE: this can be pretty small so separate eps here
+    fin[th.abs(fin) < 1.0e-8] = 1.0e-8
+    f = 1.0 / fin
+
+    tangents = f[..., np.newaxis] * (
+        v01 * vt02[..., 1][..., np.newaxis] - v02 * vt01[..., 1][..., np.newaxis]
+    )
+    tangents = tangents / th.norm(tangents, dim=-1, keepdim=True).clamp(min=eps)
+
+    # use updated normals to generate tangent direction
+    bitangents = th.cross(normals, tangents, dim=-1)
+    bitangents = bitangents / th.norm(bitangents, dim=-1, keepdim=True).clamp(min=eps).clamp(
+        min=eps
+    )
+
+    # then generate tangent again which orthogonal to b,n
+    tangents = th.cross(bitangents, normals, dim=-1)
+    tangents = tangents / th.norm(tangents, dim=-1, keepdim=True).clamp(min=eps)
+    return tangents, bitangents, normals
 
 def compute_v2uv(n_verts, vi, vti, n_max=4):
     """Computes mapping from vertex indices to texture indices.

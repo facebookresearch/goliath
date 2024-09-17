@@ -1,0 +1,87 @@
+# a example for URHand trained with OLAT
+sid: AXE977
+hand_side: left
+data:
+  root_path: /mnt/captures/oss/goliath/data/m--20230306--0839--AXE977--pilot--ProjectGoliath--Hands--${hand_side}
+  shared_assets_path: /mnt/captures/oss/goliath/data/shared/static_assets_hand_${hand_side}.pt
+  split: train
+  fully_lit_only: False
+  partially_lit_only: True
+
+dataloader:
+  batch_size: 1
+  num_workers: 4
+
+model_name: urhand
+model:
+  class_name: ca_code.models.${model_name}.AutoEncoder
+  cal:
+    identity_camera: 400870
+  renderer:
+    image_height: 2048
+    image_width: 1334
+  relight:
+    init_uv_size: 32
+    init_channels: 128
+    uv_size: 1024
+    n_joint_enc_dims: 133
+    n_view_enc_dims: 32
+    disp_scale: 3 # mm
+    refine_geo: true
+    feat_uv: texmean
+    view_cond: True
+    fresnel: 0.04
+    scaled_albedo: true
+    masked_refiner_input: true
+  blur_enable: true
+  blur_size: 3
+  blur_sig: 1.0
+  vis_feature: true
+
+summary:
+  class_name: ca_code.models.${model_name}.HandMVPSummary
+
+loss:
+  class_name: ca_code.loss.ModularLoss
+  losses:
+    rgb_l1_focus:
+      img_blur: false
+      self_mask: true
+      weight: 1.0
+    effnet:
+      src_key: rendered_rgb
+      tgt_key: image
+      mask_key: rendered_mask
+      weight: 1.0
+    rgb_l1_phys:
+      weight: 1
+      img_blur: false
+      self_mask: true
+    effnet_phys:
+      tgt_key: image
+      mask_key: rendered_mask
+      weight: 1.0
+    l1_reg:
+      weight: 0.01
+      key: interm_features2reg
+
+
+optimizer:
+  class_name: torch.optim.Adam
+  per_module:
+    decoder_relight:
+      lr: 1e-4
+
+train:
+  ckpt:
+    ckpt_path: runs/hand_mvp.${sid}.${hand_side}/checkpoints/model.pt
+  tag: ${model_name}.${sid}.${hand_side}
+  run_dir: runs/${.tag}
+  tb_dir: ${.run_dir}/tb
+  ckpt_dir: ${.run_dir}/checkpoints
+
+  # CHANGE ME
+  n_max_iters: 400000
+  log_every_n_steps: 100
+  summary_every_n_steps: 1000
+  ckpt_every_n_steps: 1000
