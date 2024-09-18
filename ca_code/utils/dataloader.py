@@ -643,7 +643,7 @@ class BodyDataset(Dataset):
             light_pattern_meta["light_patterns"][light_pattern[frame]][
                 "light_index_durations"
             ]
-        )
+        ).long()
         n_lights = lightinfo.shape[0]
         light_pos = light_pos_all[lightinfo[:, 0]]
         light_intensity = lightinfo[:, 1:].float() / 5555.0
