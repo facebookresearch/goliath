@@ -41,9 +41,9 @@ from ca_code.utils.image import linear2displayBatch
 import ca_code.nn.layers as la
 from ca_code.utils.torchutils import index
 from ca_code.utils.render_drtk import RenderLayer
+from ca_code.utils.shadowmap import get_shadow_map
 from pytorch3d.transforms import axis_angle_to_matrix, euler_angles_to_matrix, matrix_to_axis_angle
 from scipy.ndimage import gaussian_filter
-# TODO: import get_shadow_map
 
 logger = logging.getLogger(__name__)
 
@@ -412,7 +412,7 @@ class ConvTeacherDecoder(nn.Module):
                 verts = verts.reshape(B * L, verts.shape[2], verts.shape[3])
                 nml_shadow = tbn_rot_uv[:, :, :, 2:].permute(0, 3, 4, 1, 2).expand(-1, L, -1, -1, -1)
                 nml_shadow = nml_shadow.reshape(B * L, 3, nml_shadow.shape[3], nml_shadow.shape[4])
-                shadow_map = get_shadow_map(self.rl, lightpos, lightrot, verts, p_uv_shadow, nml_shadow) # range [0, 1000]
+                shadow_map = get_shadow_map(self.rl, th.concat([lightrot, lightpos[..., None]], dim=2), None, verts, p_uv_shadow, nml_shadow) # range [0, 1000]
                 shadow_map = th.exp(-shadow_map / 8.0) # [B*L, 1, H, W]
                 shadow_map = shadow_map.reshape(B, L, 1, shadow_map.shape[-2], shadow_map.shape[-1])
 
@@ -475,7 +475,8 @@ class ConvTeacherDecoder(nn.Module):
         tri_xyz_displaced = verts_rec_displaced[:, idxs]
 
         t, b, n = compute_tbn_uv_given_normal(tri_xyz_displaced, tri_uv, n)
-        tbn_rot = th.stack((t, -b, n), dim=-2)
+        # TODO: double check n or n * (-1)
+        tbn_rot = th.stack((t, -b, -n), dim=-2)
         tbn_rot_uv = th.zeros(
             (B, self.geo_fn.uv_size, self.geo_fn.uv_size, 3, 3),
             dtype=th.float32,
@@ -499,7 +500,7 @@ class ConvTeacherDecoder(nn.Module):
                 verts = verts.reshape(B * L, verts.shape[2], verts.shape[3])
                 nml_shadow = tbn_rot_uv[:, :, :, 2:].permute(0, 3, 4, 1, 2).expand(-1, L, -1, -1, -1)
                 nml_shadow = nml_shadow.reshape(B * L, 3, nml_shadow.shape[3], nml_shadow.shape[4])
-                shadow_map = get_shadow_map(self.rl, lightpos, lightrot, verts, p_uv_shadow, nml_shadow) # range [0, 1000]
+                shadow_map = get_shadow_map(self.rl, th.concat([lightrot, lightpos[..., None]], dim=2), None, verts, p_uv_shadow, nml_shadow) # range [0, 1000]
                 shadow_map = th.exp(-shadow_map / 8.0) # [B*L, 1, H, W]
                 shadow_map = shadow_map.reshape(B, L, 1, shadow_map.shape[-2], shadow_map.shape[-1])
 
@@ -657,8 +658,7 @@ class AutoEncoder(nn.Module):
             global_scaling=[10.0, 10.0, 10.0],  # meter
         )
 
-        # TODO: include color mean in hand assets
-        tex_mean = th.as_tensor(assets.color_mean)[np.newaxis]
+        tex_mean = th.as_tensor(assets.color_mean, dtype=th.float32)[np.newaxis]
         self.register_buffer("tex_mean", F.interpolate(tex_mean, (relight.uv_size, relight.uv_size), mode="bilinear"))
 
         if cal is not None:
@@ -761,13 +761,14 @@ class AutoEncoder(nn.Module):
         **kwargs,
     ):
         index = {'camera': camera_id, 'frame': frame_id}
-        tex_mean = self.tex_mean
         bs = pose.shape[0]
+        tex_mean = (self.tex_mean).repeat(bs, 1, 1, 1)
         preds = {}
         mesh_world = self.lbs_fn.pose(
             th.zeros_like(self.lbs_fn.lbs_template_verts), pose
         )
         mesh_id_only = self.lbs_fn.lbs_template_verts * self.lbs_fn.global_scaling[0]
+        mesh_id_only = mesh_id_only.repeat(bs, 1, 1)
         verts_rec = mesh_world
         hand_pose_aa = matrix_to_axis_angle(euler_angles_to_matrix(th.flip(pose.reshape(bs, -1, 3), [2]), 'ZYX')).reshape(bs, -1)
 
@@ -1104,4 +1105,5 @@ class URHandSummary(Callable):
             "progress_image": progress_image.permute(2, 0, 1),
             "texture": texture.permute(2, 0, 1),
         }
+        # cv2.imwrite("progress_image_{:04d}.png".format(batch['iteration']), progress_image[..., [2,1,0]].cpu().numpy())
         return summaries

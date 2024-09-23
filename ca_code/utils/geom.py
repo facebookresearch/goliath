@@ -884,40 +884,27 @@ def compute_view_texture(
     xyz_w = th.sum(
         verts[:, index_flat] * bary_flat[np.newaxis, :, :, np.newaxis], axis=2
     )
-    v_pix, v_cam = project_points_multi(xyz_w, Rt, K)
-    
-    v_cam_uv = th.zeros(
-        (batch_size, 3, uv_size, uv_size), dtype=verts.dtype, device=verts.device
-    )
-    v_cam_uv[:, :, uv_mask] = v_cam.permute(0, 2, 1).contiguous()
+    v_pix, _ = project_points_multi(xyz_w, Rt[:, None, ...], K[:, None, ...])
+    v_pix = v_pix[:, 0, ...] # [B, NC, N, 2]
 
     yxs = 2.0 * th.stack((v_pix[:, :, 0] / W, v_pix[:, :, 1] / H), axis=-1) - 1.0
 
     verts_rgb = F.grid_sample(image, yxs[:, np.newaxis], mode="nearest", align_corners=False, padding_mode="border")[:, :, 0]
-    v_vn = F.grid_sample(normal_image.permute(0, 3, 1, 2), yxs[:, np.newaxis], mode="nearest", align_corners=False)[:, :, 0]
-    uv_vn = th.zeros(
-        (batch_size, 3, uv_size, uv_size), dtype=verts.dtype, device=verts.device
-    )
-    uv_vn[:, :, uv_mask] = v_vn
-    if normal_threshold is None:
-        normal_threshold = 0.0
-    vn_mask = ((F.normalize(-v_cam_uv, dim=1, p=2) * uv_vn).sum(dim=1, keepdim=True) > normal_threshold).float()
     
-    # TODO: should we shuffle things around here?
     tex = th.zeros(
         (batch_size, 3, uv_size, uv_size), dtype=verts_rgb.dtype, device=verts.device
     )
     tex[:, :, uv_mask] = verts_rgb
 
-    # TODO: add an extra channel here?
     visibility_mask = compute_uv_visiblity_face(
         face_index_image.long(), faces, face_index_uv
     )
 
-    tex = tex * visibility_mask[:, np.newaxis] * vn_mask
+    # TODO: add vn mask
+    tex = tex * visibility_mask[:, np.newaxis]
 
     # NOTE: we are filtering out pixels that are too white
     if intensity_threshold:
         tex = tex * th.all(tex <= intensity_threshold, axis=1, keepdims=True)
 
-    return tex, visibility_mask[:, np.newaxis] * vn_mask
+    return tex, visibility_mask[:, np.newaxis]

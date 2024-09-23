@@ -17,20 +17,26 @@ def get_shadow_map(rl, Rt, K, verts, postex, nml = None):
     batch_size = postex.shape[0]
     height = postex.shape[2]
     width = postex.shape[3]
-
-    K = th.eye(3)[None].expand(Rt.shape[0]).to(Rt.device)
-    K[:, 0, 0] = 1000
-    K[:, 1, 1] = 1000
+    K = th.eye(3)[None].expand(Rt.shape[0], -1, -1).to(Rt.device)
+    focal = 1000
+    K[:, 0, 0] = focal
+    K[:, 1, 1] = focal
     K[:, 0, 2] = rl.w / 2
     K[:, 1, 2] = rl.h / 2
 
     points = postex.permute(0, 2, 3, 1).contiguous().view((batch_size, -1, 3))
-    v_pix, v_cam = project_points_multi(verts, Rt, K)
+    v_pix, v_cam = project_points_multi(verts, Rt[:, None, ...], K[:, None, ...])
+    v_pix = v_pix[:, 0, ...] # [B, NC, N, 2]
+    v_cam = v_cam[:, 0, ...] # [B, NC, N]
 
     center = th.tensor([rl.w, rl.h], dtype=th.float32, device=Rt.device) / 2
     pix_ratio = 1.02 * ((v_pix[..., :2] - center[None, None]) / center[None, None])
     focal = focal / abs(pix_ratio).max(1)[0]
-    v_pix, v_cam = project_points_multi(points, Rt, K)
+    # K[:, 0, 0] = focal[:, 0]
+    # K[:, 1, 1] = focal[:, 1]
+    v_pix, v_cam = project_points_multi(points, Rt[:, None, ...], K[:, None, ...]) # NC=1
+    v_pix = v_pix[:, 0, ...] # [B, NC, N, 2]
+    v_cam = v_cam[:, 0, ...] # [B, NC, N]
 
     # TODO: just use the rasterizer directly?
     tex = th.empty(batch_size, 1, 1024, 1024, device=Rt.device)
@@ -45,11 +51,10 @@ def get_shadow_map(rl, Rt, K, verts, postex, nml = None):
         tex,
         K,
         Rt,
-        output_filters=["depth_img", "index_img", "mask"],
     )
 
     depth = rlout["depth_img"][:, None, :, :]
-    v_depth_1 = v_cam[:, :, [2]].view(batch_size, height, width, 1).permute(0, 3, 1, 2).contiguous()
+    v_depth_1 = v_cam.view(batch_size, height, width, 1).permute(0, 3, 1, 2).contiguous()
 
     v_pix = v_pix[:, :, 0:2].view(batch_size, height, width, 2)
 
@@ -58,7 +63,7 @@ def get_shadow_map(rl, Rt, K, verts, postex, nml = None):
     
     # compute backface
     if nml is not None:
-        v_dir = thf.normalize(campos - postex, dim=1)
+        v_dir = thf.normalize(Rt[:, :, -1][..., None, None] - postex, dim=1)
         nv_dot = (nml * v_dir).sum(1, keepdim=True)
         bcull_mask = th.sigmoid(10 * nv_dot) # softer boundary
 
