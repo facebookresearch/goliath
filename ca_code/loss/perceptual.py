@@ -62,3 +62,8 @@ class VGGLoss(BasePerceptualLoss):
 class EfficientNetLossImpl(BasePerceptualLoss):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(net=EfficientNetLoss(), *args, **kwargs)
+
+@register_loss("effnet_phys")
+class EfficientNetLossImplPhys(BasePerceptualLoss):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(net=EfficientNetLoss(), src_key='rendered_phys_rgb', *args, **kwargs)
