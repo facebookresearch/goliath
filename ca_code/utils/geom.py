@@ -429,16 +429,16 @@ def compute_tbn_uv(tri_xyz, tri_uv):
 
     return tangent, bitangent, normal
 
-def compute_tbn_uv_given_normal(tri_xyz, tri_uv, normals, eps: float = 1e-5):
-    """Compute tangents, bitangents, normals.
+def compute_tbn_uv_given_normal(tri_xyz: th.Tensor, tri_uv: th.Tensor, normals: th.Tensor, eps: float = 1e-5):
+    """Compute tangents, bitangents given normals.
 
     Args:
-        tri_xyz: [B,N,3,3] vertex coordinates
-        tri_uv: [N,2] texture coordinates
-        normals: [B,N,3,3] normal vectors
+        tri_xyz: [B, N, 3, 3] vertex coordinates
+        tri_uv: [N, 2] texture coordinates
+        normals: [B, N, 3, 3] normal vectors
 
     Returns:
-        tangents, bitangents, normals
+        tangents, bitangents, normals -> th.Tensor for T,B,N
     """
     tri_uv = tri_uv[np.newaxis]
 
@@ -831,7 +831,7 @@ def vertex_tn(
 
     return vertex_tangents, vertex_normals
 
-def compute_face_visibility(index_img, faces):
+def compute_face_visibility(index_img: th.Tensor, faces: th.Tensor):
     batch_size = index_img.shape[0]
     face_mask = th.zeros((batch_size, faces.shape[0]), dtype=th.bool, device=index_img.device)
     # getting the visibility mask per face

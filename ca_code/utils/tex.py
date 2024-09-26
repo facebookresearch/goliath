@@ -6,6 +6,7 @@
 
 import sys
 import os
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cv2
 
@@ -17,22 +18,20 @@ from ca_code.utils.render_drtk import RenderLayer
 from ca_code.utils.geom import compute_view_texture, make_uv_vert_index, make_uv_barys, vert_normals, index_image_impaint
 from ca_code.utils.torchutils import index
 
-def get_tex_rl(rl, image, ply, extrin, intrin, face_index, index_image, bary_image):
+def get_tex_rl(rl: RenderLayer, image: th.Tensor, ply: Tuple[th.Tensor], extrin: th.Tensor, intrin: th.Tensor, face_index: th.Tensor, index_image: th.Tensor, bary_image: th.Tensor):
     '''
         image - [B, 3, rl.height, rl.width]
         ply - tuple (vert, faces)
         extrin - [B, 3, 4]
-        instrin - [B, 3, 3]
+        intrin - [B, 3, 3]
         face_index - [uv_size, uv_size]
         index_image - [uv_size, uv_size, 3]
         bary_image - [uv_size, uv_size, 3]
     '''
     assert image.shape[0] == 1
-    B = 1
     extrin = extrin[0]
     intrin = intrin[0]
-    geom = ply[0]
-    faces = ply[1]
+    geom, faces = ply
     tex_tmp = th.zeros(1, 3, 1024, 1024).to(geom)
     R = extrin[:3, :3]
     t = extrin[:3, 3]

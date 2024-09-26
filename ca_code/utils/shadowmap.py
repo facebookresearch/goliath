@@ -10,10 +10,11 @@ import torch as th
 import torch.nn.functional as thf
 
 from ca_code.utils.geom import project_points_multi
+from ca_code.utils.render_drtk import RenderLayer
 
 import cv2
 
-def get_shadow_map(rl, Rt, K, verts, postex, nml = None):
+def get_shadow_map(rl: RenderLayer, Rt: th.Tensor, K: th.Tensor, verts: th.Tensor, postex: th.Tensor, nml = None):
     batch_size = postex.shape[0]
     height = postex.shape[2]
     width = postex.shape[3]
@@ -32,16 +33,12 @@ def get_shadow_map(rl, Rt, K, verts, postex, nml = None):
     center = th.tensor([rl.w, rl.h], dtype=th.float32, device=Rt.device) / 2
     pix_ratio = 1.02 * ((v_pix[..., :2] - center[None, None]) / center[None, None])
     focal = focal / abs(pix_ratio).max(1)[0]
-    # K[:, 0, 0] = focal[:, 0]
-    # K[:, 1, 1] = focal[:, 1]
     v_pix, v_cam = project_points_multi(points, Rt[:, None, ...], K[:, None, ...]) # NC=1
     v_pix = v_pix[:, 0, ...] # [B, NC, N, 2]
     v_cam = v_cam[:, 0, ...] # [B, NC, N]
 
-    # TODO: just use the rasterizer directly?
     tex = th.empty(batch_size, 1, 1024, 1024, device=Rt.device)
 
-    # TODO TMP
     if isinstance(verts, (list, tuple)):
         z = th.empty(batch_size, 1, 256, 256, device=Rt.device)
         tex = [z, z, tex]
