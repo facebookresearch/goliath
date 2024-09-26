@@ -15,7 +15,7 @@ We provide 4 sets of captures; for each subject:
 And code to train personalized decoders:
 * Relightable Gaussian Codec Avatar heads,
 * Relightable hands
-* Universal relightable hands
+* [Universal relightable hands](https://arxiv.org/abs/2401.05334)
 * Mesh-based bodies 
 
 ![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
@@ -78,7 +78,7 @@ python -m ca_code.scripts.run_train <config.yml>
 
 (URHand training) You may need to unwrap images to get `color_mean.png` for static hand assets before launch training:
 ```
-python -m ca_code.scripts.run_gen_texmean <config.yml>
+python -m ca_code.scripts.run_gen_texmean config/urhand_mesh_example.yml
 ```
 
 ### Visualization (Relighting)

@@ -48,29 +48,28 @@ def main(config: DictConfig):
         global_scaling=[10.0, 10.0, 10.0],  # meter
     ).to(device)
 
+    vt = geo_fn.vt
+    vi = geo_fn.vi
+    vti = geo_fn.vti
+
     rl = RenderLayer(
         h=config.model.renderer.image_height,
         w=config.model.renderer.image_width,
-        vt=geo_fn.vt,
-        vi=geo_fn.vi.int(),
-        vti=geo_fn.vti,
+        vt=vt,
+        vi=vi.int(),
+        vti=vti,
         flip_uvs=False,
     ).to(device)
 
     uv_size = (1024, 1024)
     inpaint_threshold = 100.0
-    vt = geo_fn.vt
-    vi = geo_fn.vi
-    vti = geo_fn.vti
     index_image = make_uv_vert_index(
         vt, vi, vti, uv_shape=uv_size, flip_uv=True
     ).cpu()
     face_index, bary_image = make_uv_barys(vt, vti, uv_shape=uv_size, flip_uv=True)
 
     # inpaint index uv images
-    index_image, bary_image = index_image_impaint(
-                    index_image, bary_image, inpaint_threshold
-                )
+    index_image, bary_image = index_image_impaint(index_image, bary_image, inpaint_threshold)
     face_index = index_image_impaint(face_index, distance_threshold=inpaint_threshold)
 
     frame_list = train_dataset.get_frame_list(
@@ -78,7 +77,8 @@ def main(config: DictConfig):
         partially_lit_only=train_dataset.partially_lit_only,
     )
     # we suggest to use occlusion-free 5 consecutive frames for tex_mean extraction
-    frame_list = frame_list[:5]
+    num_frames = 5
+    frame_list = frame_list[:num_frames]
     camera_list = train_dataset.get_camera_list()
     tex_total = th.zeros(1, 3, 1024, 1024).float().to(device)
     tex_cnt = th.zeros(1, 3, 1024, 1024).float().to(device)
