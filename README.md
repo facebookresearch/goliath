@@ -76,7 +76,7 @@ or simply
 python -m ca_code.scripts.run_train <config.yml>
 ```
 
-(URHand training) You may need to unwrap images to get `color_mean.png` for static hand assets before launch training:
+(URHand training) You may need to unwrap images to get `color_mean.png` for static hand assets before launch training in case there is no `color_mean.png` under `uv_images` for the target identity:
 ```
 python -m ca_code.scripts.run_gen_texmean config/urhand_mesh_example.yml
 ```
