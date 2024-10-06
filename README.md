@@ -15,6 +15,7 @@ We provide 4 sets of captures; for each subject:
 And code to train personalized decoders:
 * Relightable Gaussian Codec Avatar heads,
 * Relightable hands
+* [Universal relightable hands](https://arxiv.org/abs/2401.05334)
 * Mesh-based bodies 
 
 ![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
@@ -75,6 +76,11 @@ or simply
 python -m ca_code.scripts.run_train <config.yml>
 ```
 
+(URHand training) You may need to unwrap images to get `color_mean.png` for static hand assets before launch training in case there is no `color_mean.png` under `uv_images` for the target identity:
+```
+python -m ca_code.scripts.run_gen_texmean config/urhand_mesh_example.yml
+```
+
 ### Visualization (Relighting)
 
 ```
@@ -131,5 +137,15 @@ Relightable Hand Avatars
   booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
   pages={16663--16673},
   year={2023}
+}
+```
+
+Universal Relightable Hand Avatars
+```
+@inproceedings{chen2024urhand,
+  title={{U}{R}Hand: Universal Relightable Hands},
+  author={Zhaoxi Chen and Gyeongsik Moon and Kaiwen Guo and Chen Cao and Stanislav Pidhorskyi and Tomas Simon and Rohan Joshi and Yuan Dong and Yichen Xu and Bernardo Pires and He Wen and Lucas Evans and Bo Peng and Julia Buffalini and Autumn Trimble and Kevyn McPhail and Melissa Schoeller and Shoou-I Yu and Javier Romero and Michael Zollhöfer and Yaser Sheikh and Ziwei Liu and Shunsuke Saito}
+  booktitle={CVPR},
+  year={2024}
 }
 ```
