@@ -429,6 +429,45 @@ def compute_tbn_uv(tri_xyz, tri_uv):
 
     return tangent, bitangent, normal
 
+def compute_tbn_uv_given_normal(tri_xyz: th.Tensor, tri_uv: th.Tensor, normals: th.Tensor, eps: float = 1e-5):
+    """Compute tangents, bitangents given normals.
+
+    Args:
+        tri_xyz: [B, N, 3, 3] vertex coordinates
+        tri_uv: [N, 2] texture coordinates
+        normals: [B, N, 3, 3] normal vectors
+
+    Returns:
+        tangents, bitangents, normals -> th.Tensor for T,B,N
+    """
+    tri_uv = tri_uv[np.newaxis]
+
+    v01 = tri_xyz[:, :, 1] - tri_xyz[:, :, 0]
+    v02 = tri_xyz[:, :, 2] - tri_xyz[:, :, 0]
+
+    vt01 = tri_uv[:, :, 1] - tri_uv[:, :, 0]
+    vt02 = tri_uv[:, :, 2] - tri_uv[:, :, 0]
+
+    fin = vt01[..., 0] * vt02[..., 1] - vt01[..., 1] * vt02[..., 0]
+    # NOTE: this can be pretty small so separate eps here
+    fin[th.abs(fin) < 1.0e-8] = 1.0e-8
+    f = 1.0 / fin
+
+    tangents = f[..., np.newaxis] * (
+        v01 * vt02[..., 1][..., np.newaxis] - v02 * vt01[..., 1][..., np.newaxis]
+    )
+    tangents = tangents / th.norm(tangents, dim=-1, keepdim=True).clamp(min=eps)
+
+    # use updated normals to generate tangent direction
+    bitangents = th.cross(normals, tangents, dim=-1)
+    bitangents = bitangents / th.norm(bitangents, dim=-1, keepdim=True).clamp(min=eps).clamp(
+        min=eps
+    )
+
+    # then generate tangent again which orthogonal to b,n
+    tangents = th.cross(bitangents, normals, dim=-1)
+    tangents = tangents / th.norm(tangents, dim=-1, keepdim=True).clamp(min=eps)
+    return tangents, bitangents, normals
 
 def compute_v2uv(n_verts, vi, vti, n_max=4):
     """Computes mapping from vertex indices to texture indices.
@@ -791,3 +830,81 @@ def vertex_tn(
     )
 
     return vertex_tangents, vertex_normals
+
+def compute_face_visibility(index_img: th.Tensor, faces: th.Tensor):
+    batch_size = index_img.shape[0]
+    face_mask = th.zeros((batch_size, faces.shape[0]), dtype=th.bool, device=index_img.device)
+    # getting the visibility mask per face
+    for b in range(batch_size):
+        visible_faces = th.unique(
+            index_img[b][index_img[b] != -1].reshape(
+                -1,
+            )
+        )
+        face_mask[b, visible_faces] = 1.0
+    return face_mask
+
+def compute_uv_visiblity_face(face_index_image, faces, face_index_uv):
+    batch_size = face_index_image.shape[0]
+    uv_size = face_index_uv.shape[0]
+    visibility = th.zeros(
+        (batch_size, uv_size, uv_size), dtype=th.bool, device=face_index_image.device
+    )
+    
+    face_mask = compute_face_visibility(face_index_image, faces)
+    # getting the visibility mask per face
+    for b in range(batch_size):
+        mask = face_index_uv != -1
+        visibility[b][mask] = face_mask[b][face_index_uv[mask]]
+    return visibility
+
+
+def compute_view_texture(
+    verts,
+    faces,
+    image,
+    face_index_image,
+    normal_image,
+    K,
+    Rt,
+    index_image_uv,
+    bary_image_uv,
+    face_index_uv,
+    intensity_threshold=None,
+    normal_threshold=None
+):
+    batch_size = verts.shape[0]
+    uv_size = index_image_uv.shape[0]
+    H, W = image.shape[2:4]
+
+    uv_mask = index_image_uv[..., 0] != -1
+    index_flat = index_image_uv[uv_mask]
+    bary_flat = bary_image_uv[uv_mask]
+
+    xyz_w = th.sum(
+        verts[:, index_flat] * bary_flat[np.newaxis, :, :, np.newaxis], axis=2
+    )
+    v_pix, _ = project_points_multi(xyz_w, Rt[:, None, ...], K[:, None, ...])
+    v_pix = v_pix[:, 0, ...] # [B, NC, N, 2]
+
+    yxs = 2.0 * th.stack((v_pix[:, :, 0] / W, v_pix[:, :, 1] / H), axis=-1) - 1.0
+
+    verts_rgb = F.grid_sample(image, yxs[:, np.newaxis], mode="nearest", align_corners=False, padding_mode="border")[:, :, 0]
+    
+    tex = th.zeros(
+        (batch_size, 3, uv_size, uv_size), dtype=verts_rgb.dtype, device=verts.device
+    )
+    tex[:, :, uv_mask] = verts_rgb
+
+    visibility_mask = compute_uv_visiblity_face(
+        face_index_image.long(), faces, face_index_uv
+    )
+
+    # TODO: add vn mask
+    tex = tex * visibility_mask[:, np.newaxis]
+
+    # NOTE: we are filtering out pixels that are too white
+    if intensity_threshold:
+        tex = tex * th.all(tex <= intensity_threshold, axis=1, keepdims=True)
+
+    return tex, visibility_mask[:, np.newaxis]

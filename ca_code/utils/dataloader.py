@@ -348,7 +348,14 @@ class BodyDataset(Dataset):
     @lru_cache(maxsize=1)
     def load_color_mean(self) -> torch.Tensor:
         png_path = self.root_path / "uv_image" / "color_mean.png"
-        return pil_to_tensor(Image.open(png_path))
+        try:
+            img = Image.open(png_path)
+            return pil_to_tensor(img)
+        except Exception as e:
+            logger.warning(
+                f"error when loading color mean at `{png_path}`, skipping"
+            )
+            return None
 
     @lru_cache(maxsize=1)
     def load_color_variance(self) -> float:
@@ -505,7 +512,7 @@ class BodyDataset(Dataset):
         template_mesh = self.load_template_mesh()
         template_mesh_unscaled = self.load_template_mesh_unscaled()
         ambient_occlusion_mean = self.load_ambient_occlusion_mean()
-        # color_mean = self.load_color_mean()
+        color_mean = self.load_color_mean()
         krt = self.get_camera_calibration()
         return {
             "camera_ids": list(krt.keys()),
@@ -514,7 +521,7 @@ class BodyDataset(Dataset):
             "template_mesh": template_mesh,
             "template_mesh_unscaled": template_mesh_unscaled,
             "ambient_occlusion_mean": ambient_occlusion_mean / 255.0,
-            # "color_mean": color_mean,
+            "color_mean": color_mean,
         }
 
     def _get_for_body(self, frame: int, camera: str) -> Dict[str, Any]:
@@ -643,7 +650,7 @@ class BodyDataset(Dataset):
             light_pattern_meta["light_patterns"][light_pattern[frame]][
                 "light_index_durations"
             ]
-        )
+        ).long()
         n_lights = lightinfo.shape[0]
         light_pos = light_pos_all[lightinfo[:, 0]]
         light_intensity = lightinfo[:, 1:].float() / 5555.0
