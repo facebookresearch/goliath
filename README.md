@@ -105,6 +105,16 @@ See LICENSE.
 
 If you use this repository, please cite relevant paper(s).
 
+For the data itself
+```
+@article{martinez2024codec,
+  author = {Julieta Martinez and Emily Kim and Javier Romero and Timur Bagautdinov and Shunsuke Saito and Shoou-I Yu and Stuart Anderson and Michael Zollhöfer and Te-Li Wang and Shaojie Bai and Chenghui Li and Shih-En Wei and Rohan Joshi and Wyatt Borsos and Tomas Simon and Jason Saragih and Paul Theodosis and Alexander Greene and Anjani Josyula and Silvio Mano Maeta and Andrew I. Jewett and Simon Venshtain and Christopher Heilman and Yueh-Tung Chen and Sidi Fu and Mohamed Ezzeldin A. Elshaer and Tingfang Du and Longhua Wu and Shen-Chi Chen and Kai Kang and Michael Wu and Youssef Emad and Steven Longay and Ashley Brewer and Hitesh Shah and James Booth and Taylor Koska and Kayla Haidle and Matt Andromalos and Joanna Hsu and Thomas Dauer and Peter Selednik and Tim Godisart and Scott Ardisson and Matthew Cipperly and Ben Humberston and Lon Farr and Bob Hansen and Peihong Guo and Dave Braun and Steven Krenn and He Wen and Lucas Evans and Natalia Fadeeva and Matthew Stewart and Gabriel Schwartz and Divam Gupta and Gyeongsik Moon and Kaiwen Guo and Yuan Dong and Yichen Xu and Takaaki Shiratori and Fabian Prada and Bernardo R. Pires and Bo Peng and Julia Buffalini and Autumn Trimble and Kevyn McPhail and Melissa Schoeller and Yaser Sheikh},
+  title = {{Codec Avatar Studio: Paired Human Captures for Complete, Driveable, and Generalizable Avatars}},
+  year = {2024},
+  journal = {NeurIPS Track on Datasets and Benchmarks},
+}
+```
+
 Full-body Avatars
 ```
 @article{bagautdinov2021driving,
