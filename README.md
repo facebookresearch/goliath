@@ -13,10 +13,10 @@ We provide 4 sets of captures; for each subject:
 * 1 mobile minimally clothed capture
 
 And code to train personalized decoders:
-* Relightable Gaussian Codec Avatar heads,
-* Relightable hands
-* [Universal relightable hands](https://arxiv.org/abs/2401.05334)
-* Mesh-based bodies 
+* [Relightable Gaussian Codec Avatar Heads](https://shunsukesaito.github.io/rgca/) (CVPR'24)
+* [Relightable hands](https://sh8.io/#/relightable_hands) (CVPR'23)
+* [Universal relightable hands](https://frozenburning.github.io/projects/urhand/) (CVPR'24)
+* [Mesh-based bodies](https://arxiv.org/abs/2105.10441) (ToG'21)
 
 ![goliath](https://github.com/facebookresearch/goliath/assets/3733964/887bf0a0-a92a-40b7-90bc-a0f9872c787b)
 
