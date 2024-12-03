@@ -1,3 +1,7 @@
 metro_noord_1k.hdr
 data
 __pycache__
+
+checkpoints/
+extensions/*/build/
+extensions/**/*.so
