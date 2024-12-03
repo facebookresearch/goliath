@@ -60,25 +60,22 @@ def render(
         render_mode="RGB" + "+D" if return_depth else ""
     )
 
-    out_img = out_img[0]
-    alpha = alpha[0]
-
-    radii = meta['radii'][0]
+    out_img = out_img[0].permute(2, 0, 1)  # [3, H, W] or [4, H, W] if return_depth
+    alpha = alpha[0].permute(2, 0, 1)
 
     assert alpha is not None
-    out_color = out_img[..., :3]
+    out_color = out_img[:3, ...]
     final_T = 1.0 - alpha
 
     out = {
-        "render": out_color.permute(2, 0, 1),
-        "final_T": final_T[None],
-        "alpha": alpha[None],
-        "radii": radii,
+        "render": out_color,
+        "final_T": final_T,
+        "alpha": alpha,
     }
 
+    # import ipdb; ipdb.set_trace()    
     if return_depth:
-        depth = out_img[..., -1]
-        depth = depth[..., 0]
-        out["depth"] = depth[None]
+        depth = out_img[3:4, ...]  # [1, H, W]
+        out["depth"] = depth  # 
 
     return out

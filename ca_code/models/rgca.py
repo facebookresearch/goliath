@@ -142,6 +142,7 @@ class AutoEncoder(nn.Module):
 
         rgb = rgb
         alpha = 1.0 - th.stack(Ts)
+        
         depth = depth / alpha.clamp(0.05, 1.0)
 
         del rgbs
